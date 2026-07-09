@@ -58,7 +58,7 @@ main() {
       ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       threshold="$(severity_rank "$POLICY_BLOCK_SEVERITY")"
 
-      # ---- Layer 10: prompt policy (block on critical, warn otherwise) ----
+      # ---- Policy layer: prompt policy (block on critical, warn otherwise) ----
       while IFS='|' read -r rule sev evidence; do
         [ -z "$rule" ] && continue
         red="$(redact "$evidence")"
@@ -75,14 +75,14 @@ main() {
           [ -n "$warn_msgs" ] && warn_msgs="$warn_msgs; "
           warn_msgs="${warn_msgs}${rule} (${red})"
         fi
-      done < <("$AIHOOKS_ROOT/layers/10-policy/scan-prompt.sh" "$prompt")
+      done < <("$AIHOOKS_ROOT/layers/policy/scan-prompt.sh" "$prompt")
 
-      # ---- Layer 30: skills detected in the prompt (namespaced tokens only) ----
+      # ---- Usage layer: skills detected in the prompt (namespaced tokens only) ----
       while IFS='|' read -r skill plugin source kind; do
         [ -z "$skill" ] && continue
         otel_send 'pc.ai.skill_usage' "pc.skill=$skill" "pc.plugin=$plugin" "pc.source=$source" "pc.kind=$kind" \
           "pc.agent=$AGENT" "pc.user_hash=$UHASH" "pc.hooks_version=$VERSION"
-      done < <("$AIHOOKS_ROOT/layers/30-skills/skill-usage.sh" "$prompt" "" "")
+      done < <("$AIHOOKS_ROOT/layers/usage/usage.sh" "$prompt" "" "")
 
       logp="$LOG_DIR/security.jsonl"
       if [ -n "$block_msgs" ]; then
@@ -117,7 +117,7 @@ main() {
           [ -z "$skill" ] && continue
           otel_send 'pc.ai.skill_usage' "pc.skill=$skill" "pc.plugin=$plugin" "pc.source=$source" "pc.kind=$k" \
             "pc.agent=$AGENT" "pc.user_hash=$UHASH" "pc.hooks_version=$VERSION"
-        done < <("$AIHOOKS_ROOT/layers/30-skills/skill-usage.sh" "" "$name" "$kind")
+        done < <("$AIHOOKS_ROOT/layers/usage/usage.sh" "" "$name" "$kind")
       fi
       ;;
 

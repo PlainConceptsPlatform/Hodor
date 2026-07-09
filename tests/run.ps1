@@ -81,25 +81,25 @@ $env:AIHOOKS_SETTINGS = $null
 
 Write-Host "`n== Unit checks =="
 # scan-prompt: rule + severity
-$f = & (Join-Path $Root 'layers\10-policy\scan-prompt.ps1') -Prompt 'key AKIA1234567890ABCDEF here' -Root $Root
+$f = & (Join-Path $Root 'layers\policy\scan-prompt.ps1') -Prompt 'key AKIA1234567890ABCDEF here' -Root $Root
 if ($f -and $f[0].rule -eq 'AWS_ACCESS_KEY' -and $f[0].severity -eq 'critical') { Ok 'scan: AWS critical' } else { Bad 'scan: AWS critical' ("$($f | ConvertTo-Json -Compress)") }
 # placeholder filtered
-$f = & (Join-Path $Root 'layers\10-policy\scan-prompt.ps1') -Prompt 'AKIAEXAMPLEKEY123456' -Root $Root
+$f = & (Join-Path $Root 'layers\policy\scan-prompt.ps1') -Prompt 'AKIAEXAMPLEKEY123456' -Root $Root
 if (-not $f -or $f.Count -eq 0) { Ok 'scan: placeholder filtered' } else { Bad 'scan: placeholder filtered' "$($f.Count) findings" }
 # Luhn valid vs invalid
-$f = & (Join-Path $Root 'layers\10-policy\scan-prompt.ps1') -Prompt 'card 4111111111111111' -Root $Root
+$f = & (Join-Path $Root 'layers\policy\scan-prompt.ps1') -Prompt 'card 4111111111111111' -Root $Root
 if ($f | Where-Object { $_.rule -eq 'CREDIT_CARD' }) { Ok 'scan: valid Luhn card detected' } else { Bad 'scan: valid Luhn card detected' }
-$f = & (Join-Path $Root 'layers\10-policy\scan-prompt.ps1') -Prompt 'card 4111111111111112' -Root $Root
+$f = & (Join-Path $Root 'layers\policy\scan-prompt.ps1') -Prompt 'card 4111111111111112' -Root $Root
 if (-not ($f | Where-Object { $_.rule -eq 'CREDIT_CARD' })) { Ok 'scan: invalid Luhn rejected' } else { Bad 'scan: invalid Luhn rejected' }
 
-# skill-usage classification
-$su = & (Join-Path $Root 'layers\30-skills\skill-usage.ps1') -SkillName 'pc-ai:debugger' -Kind skill -Root $Root
+# usage classification
+$su = & (Join-Path $Root 'layers\usage\usage.ps1') -SkillName 'pc-ai:debugger' -Kind skill -Root $Root
 if ($su[0].source -eq 'plainconcepts' -and $su[0].plugin -eq 'pc-ai' -and $su[0].kind -eq 'skill') { Ok 'skill: pc- => plainconcepts' } else { Bad 'skill: pc- => plainconcepts' "$($su | ConvertTo-Json -Compress)" }
-$su = & (Join-Path $Root 'layers\30-skills\skill-usage.ps1') -SkillName 'anthropic-skills:docx' -Kind skill -Root $Root
+$su = & (Join-Path $Root 'layers\usage\usage.ps1') -SkillName 'anthropic-skills:docx' -Kind skill -Root $Root
 if ($su[0].source -eq 'plugin') { Ok 'skill: other plugin => plugin' } else { Bad 'skill: other plugin => plugin' "$($su | ConvertTo-Json -Compress)" }
-$su = & (Join-Path $Root 'layers\30-skills\skill-usage.ps1') -SkillName 'my-local-skill' -Kind skill -Root $Root
+$su = & (Join-Path $Root 'layers\usage\usage.ps1') -SkillName 'my-local-skill' -Kind skill -Root $Root
 if ($su[0].source -eq 'personal') { Ok 'skill: bare => personal' } else { Bad 'skill: bare => personal' "$($su | ConvertTo-Json -Compress)" }
-$su = & (Join-Path $Root 'layers\30-skills\skill-usage.ps1') -Prompt 'please /build now' -Root $Root
+$su = & (Join-Path $Root 'layers\usage\usage.ps1') -Prompt 'please /build now' -Root $Root
 if (-not $su -or $su.Count -eq 0) { Ok 'skill: bare /word ignored' } else { Bad 'skill: bare /word ignored' "$($su.Count)" }
 
 # version format + -Event version does not block on stdin

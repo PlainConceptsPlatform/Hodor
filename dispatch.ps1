@@ -71,8 +71,8 @@ try {
     switch -Regex ($Event) {
 
         '^(UserPromptSubmit|userPromptSubmitted)$' {
-            # ---- Layer 10: prompt policy (block on critical, warn otherwise) ----
-            $findings = & (Join-Path $Root 'layers\10-policy\scan-prompt.ps1') -Prompt $prompt -Root $Root
+            # ---- Policy layer: prompt policy (block on critical, warn otherwise) ----
+            $findings = & (Join-Path $Root 'layers\policy\scan-prompt.ps1') -Prompt $prompt -Root $Root
             $threshold = Get-SeverityRank $settings.policy.blockSeverity
             $blockMsgs = @()
             $warnMsgs = @()
@@ -102,8 +102,8 @@ try {
                 if ($isBlock) { $blockMsgs += "$($f.rule) ($red)" } else { $warnMsgs += "$($f.rule) ($red)" }
             }
 
-            # ---- Layer 30: skill usage detected in the prompt (namespaced tokens only) ----
-            $skills = & (Join-Path $Root 'layers\30-skills\skill-usage.ps1') -Prompt $prompt -Root $Root
+            # ---- Usage layer: skill usage detected in the prompt (namespaced tokens only) ----
+            $skills = & (Join-Path $Root 'layers\usage\usage.ps1') -Prompt $prompt -Root $Root
             foreach ($s in $skills) {
                 Send-OtelEvent -Settings $settings -Name 'pc.ai.skill_usage' -Attributes @{
                     'pc.skill'         = $s.skill
@@ -140,7 +140,7 @@ try {
         }
 
         '^(PreToolUse|preToolUse)$' {
-            # ---- Layer 30: skill/agent invocation via tools (Claude Code) ----
+            # ---- Usage layer: skill/agent invocation via tools (Claude Code) ----
             $name = $null; $kind = $null
             if ($toolName -match '^[Ss]kill$') {
                 $name = [string](Get-Field $toolInput @('skill', 'name', 'command'))
@@ -151,7 +151,7 @@ try {
                 $kind = 'agent'
             }
             if ($name -and $kind) {
-                $skills = & (Join-Path $Root 'layers\30-skills\skill-usage.ps1') -SkillName $name -Kind $kind -Root $Root
+                $skills = & (Join-Path $Root 'layers\usage\usage.ps1') -SkillName $name -Kind $kind -Root $Root
                 foreach ($s in $skills) {
                     Send-OtelEvent -Settings $settings -Name 'pc.ai.skill_usage' -Attributes @{
                         'pc.skill'         = $s.skill

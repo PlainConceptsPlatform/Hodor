@@ -38,11 +38,11 @@ ai-hooks/
 │   ├── logrotate.sh               # rotación: security.jsonl, máx 5 MB × 3 ficheros
 │   └── otel.sh                    # envío OTLP (curl) con cola local y flush en sessionEnd
 ├── layers/
-│   ├── 10-policy/
+│   ├── policy/
 │   │   ├── scan-prompt.sh         # análisis del prompt contra patterns.d → warning
 │   │   └── patterns.d/            # un fichero por familia de reglas
-│   └── 30-skills/
-│       └── skill-usage.sh         # detección de invocaciones de skills/agents
+│   └── usage/
+│       └── usage.sh               # detección de invocaciones de skills/agents
 └── config/
     ├── settings.json              # endpoint OTel, log, umbral de bloqueo, prefijo de plugin de la org
     └── allowlist.txt              # falsos positivos aprobados (PR al repo)

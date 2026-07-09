@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# layers/10-policy/scan-prompt.sh - scans the prompt against patterns.d
+# layers/policy/scan-prompt.sh - scans the prompt against patterns.d
 # Usage: scan-prompt.sh "<prompt>"  (AIHOOKS_ROOT must be exported, or it is auto-detected)
 # Output: one line per finding -> RULE|SEVERITY|EVIDENCE
 
@@ -35,7 +35,7 @@ in_allowlist() {
   return 1
 }
 
-for pfile in "$ROOT"/layers/10-policy/patterns.d/*.txt; do
+for pfile in "$ROOT"/layers/policy/patterns.d/*.txt; do
   [ -f "$pfile" ] || continue
   while IFS='|' read -r name sev re; do
     [ -z "$name" ] && continue

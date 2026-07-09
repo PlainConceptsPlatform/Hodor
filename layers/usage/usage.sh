@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# layers/30-skills/skill-usage.sh - detects skill/agent usage, classified by plugin namespace
-# Usage: skill-usage.sh "<prompt>" "<direct-name>" "<kind: skill|agent>"
+# layers/usage/usage.sh - detects skill/agent usage, classified by plugin namespace
+# Usage: usage.sh "<prompt>" "<direct-name>" "<kind: skill|agent>"
 # Output: one line per event -> SKILL|PLUGIN|SOURCE|KIND
 #   source: plainconcepts (plugin starts with org prefix) | plugin (other namespaced) | personal (no namespace)
 # The prompt is scanned ONLY for namespaced /plugin:skill tokens (bare /word tokens are ignored).

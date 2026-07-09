@@ -1,4 +1,4 @@
-# layers/10-policy/scan-prompt.ps1
+# layers/policy/scan-prompt.ps1
 # Scans the prompt against patterns.d. Returns findings: @{rule; severity; evidence}
 param(
     [string]$Prompt,
@@ -48,7 +48,7 @@ if (Test-Path $allowPath) {
 }
 
 $findings = @()
-$patternFiles = Get-ChildItem (Join-Path $Root 'layers\10-policy\patterns.d') -Filter '*.txt' | Sort-Object Name
+$patternFiles = Get-ChildItem (Join-Path $Root 'layers\policy\patterns.d') -Filter '*.txt' | Sort-Object Name
 foreach ($file in $patternFiles) {
     foreach ($line in (Get-Content $file.FullName -Encoding UTF8)) {
         $line = $line.Trim()

@@ -1,4 +1,4 @@
-# layers/30-skills/skill-usage.ps1
+# layers/usage/usage.ps1
 # Detects skill/agent usage and classifies it by plugin namespace.
 # Returns events: @{skill; plugin; source; kind}
 #   - source: plainconcepts (plugin starts with org prefix) | plugin (other namespaced) | personal (no namespace)

@@ -68,8 +68,8 @@ unset AIHOOKS_SETTINGS
 echo ""
 echo "== Unit checks =="
 export AIHOOKS_ROOT="$ROOT"
-SP="$ROOT/layers/10-policy/scan-prompt.sh"
-SU="$ROOT/layers/30-skills/skill-usage.sh"
+SP="$ROOT/layers/policy/scan-prompt.sh"
+SU="$ROOT/layers/usage/usage.sh"
 
 out="$("$SP" 'key AKIA1234567890ABCDEF here')"
 case "$out" in AWS_ACCESS_KEY\|critical*) ok 'scan: AWS critical' ;; *) bad 'scan: AWS critical' "$out" ;; esac

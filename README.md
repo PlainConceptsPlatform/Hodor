@@ -4,7 +4,7 @@ Corporate hooks for VS Code (Copilot Chat), GitHub Copilot CLI and Claude Code.
 
 **Policy = block on critical**: a prompt with a **critical** finding (real secrets — AWS/GCP/Azure keys, GitHub/Stripe tokens, private keys, credit cards) is **blocked before reaching the model**. `high`/`medium` findings stay as a non-blocking **warning** (the request continues). The threshold is configurable via `policy.blockSeverity` (`critical` default · `high` · `none` = warn-only).
 
-Layers: `10-policy` (blocks/warns when the prompt violates the company AI policy), `30-skills` (skill/agent usage).
+Layers: `policy` (blocks/warns when the prompt violates the company AI policy), `usage` (skill/agent usage).
 Telemetry: 3 OTel events (`pc.ai.policy_warning`, `pc.ai.hook_issue`, `pc.ai.skill_usage`) → App Insights; without network/endpoint they are queued on disk and retried on `sessionEnd`.
 
 Skill/agent telemetry covers **all** usage (not only Plain Concepts) and classifies each by the **plugin namespace** of the invocation name (`plugin:skill`, `plugin:agent`):
@@ -26,8 +26,8 @@ ai-hooks/
 ├── dispatch.ps1 / dispatch.sh     # single entry point: dispatch -Event <event> -Agent <agent>
 ├── lib/                           # common, logrotate, otel (PS + bash)
 ├── layers/
-│   ├── 10-policy/                 # scan-prompt + patterns.d/*.txt (NAME|SEVERITY|REGEX)
-│   └── 30-skills/                 # skill-usage: captures ALL skills & agents; tags Plain Concepts (pc- plugin) vs plugin vs personal
+│   ├── policy/                    # scan-prompt + patterns.d/*.txt (NAME|SEVERITY|REGEX)
+│   └── usage/                     # usage: captures ALL skills & agents; tags Plain Concepts (pc- plugin) vs plugin vs personal
 ├── config/
 │   ├── settings.json              # OTel endpoint, log rotation, identity, policy.blockSeverity, skills.orgPluginPrefix
 │   └── allowlist.txt              # approved false positives
@@ -140,7 +140,7 @@ The exact `tool_input` field of the Skill tool (and whether it carries the `plug
 $env:HODOR_DEBUG = "1"   # then restart Claude Code / VS Code and invoke a pc- skill or agent
 ```
 
-Adjust the field parsing in `layers/30-skills` if the observed format differs.
+Adjust the field parsing in `layers/usage` if the observed format differs.
 
 ## Behavior per platform
 
@@ -155,7 +155,7 @@ The hook emits all block signals (stderr message + `{"decision":"block"}` on std
 ## Testing on macOS/Linux
 
 ```bash
-chmod +x dispatch.sh layers/10-policy/scan-prompt.sh layers/30-skills/skill-usage.sh
+chmod +x dispatch.sh layers/policy/scan-prompt.sh layers/usage/usage.sh
 # CRITICAL -> blocks (exit 2)
 echo '{"prompt":"token ghp_0123456789abcdefghijklmnopqrstuvwxyz12"}' | ./dispatch.sh UserPromptSubmit claude-code; echo "exit=$?"
 # Skill usage
