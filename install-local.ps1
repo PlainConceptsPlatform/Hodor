@@ -16,6 +16,9 @@ Write-Host "== Company AI Hooks: local test installation =="
 if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest -Force | Out-Null }
 Get-ChildItem -Path $Src -Force | Where-Object { $_.Name -ne '.git' } |
     Copy-Item -Destination $Dest -Recurse -Force
+# Remove any stale .git left by older installs: version must come from build-info.json here, not a frozen repo.
+$destGit = Join-Path $Dest '.git'
+if (Test-Path $destGit) { Remove-Item $destGit -Recurse -Force -ErrorAction SilentlyContinue; Write-Host "[OK] Removed stale .git from install" }
 Write-Host "[OK] Scripts copied to $Dest"
 
 # 1b. Stamp build-info.json (version derived from git in the SOURCE repo) into the install

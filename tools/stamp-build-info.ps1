@@ -35,8 +35,15 @@ try {
     }
 } catch { }
 
-$version = if ($commit -eq 'unknown') { "$base.0+gunknown" } else { "$base.$commitCount+g$commit" }
+# Guard: this tool stamps from a git repo (source checkout / CI). If there is no git info
+# (e.g. it was mistakenly run inside an installed copy), do NOT overwrite a good build-info.json.
+if ($commit -eq 'unknown') {
+    Write-Warning "stamp-build-info: no git repo found at '$SourceRoot' (commit unknown). Not writing $OutFile."
+    Write-Warning "Run this from the source checkout, or use tools\hodor-version.ps1 to read the installed version."
+    exit 0
+}
 
+$version = "$base.$commitCount+g$commit"
 $info = [ordered]@{
     version     = $version
     base        = $base
