@@ -36,7 +36,8 @@ ai-hooks/
 │   └── claude/hooks-fragment.json # → managed settings or ~/.claude/settings.json
 ├── tools/
 │   ├── hodor-version.ps1 / .sh    # doctor: version + paths + hook wiring
-│   └── stamp-build-info.ps1       # computes build-info.json from git (shared: install + CI)
+│   ├── stamp-build-info.ps1       # computes build-info.json from git (shared: install + CI)
+│   └── dashboard.html             # static, offline telemetry dashboard (drag & drop a log file)
 ├── tests/
 │   ├── cases/                     # shared fixtures (cmd, payload.json, expect, settings.json?)
 │   └── run.ps1 / run.sh           # dependency-free regression suite (both dispatchers)
@@ -119,6 +120,17 @@ Coverage: block-on-critical vs warn (and the `policy.blockSeverity` threshold), 
 
 Logs (circular rotation, 5 MB × 3, configurable): `%LOCALAPPDATA%\PlainConcepts\ai-hooks\logs\`
 (`security.jsonl` — with `event: policy_block`/`policy_warning` and `action`; `hooks-error.jsonl`; `telemetry-queue.jsonl`).
+
+## Telemetry dashboard
+
+The JSONL logs are hard to read by hand. `tools/dashboard.html` is a **static, offline** dashboard — no server, no dependencies, nothing leaves the page. Open it in a browser and **drag & drop** (or pick) `telemetry-queue.jsonl` (optionally also `security.jsonl` / `hooks-error.jsonl`):
+
+```
+start "" "%LOCALAPPDATA%\PlainConcepts\ai-hooks\tools\dashboard.html"
+# then drop the log from %LOCALAPPDATA%\PlainConcepts\ai-hooks\logs\
+```
+
+It shows: **policy findings grouped by severity** (critical/high/medium, with a per-rule block/warn breakdown) and **skills & agents by usage** (every skill/agent sorted most-used → least, tagged by plugin and source), plus a hook-errors panel. It parses both queue formats (PowerShell object-attrs and bash OTLP array-attrs) and tolerates mixed/old schemas, BOM and malformed lines. Large files load with a progress bar and non-blocking (batched) parsing. `tools/dashboard-sample.jsonl` is a small demo file you can drop to see it in action.
 
 ### Confirming the real payload format (`HODOR_DEBUG`)
 

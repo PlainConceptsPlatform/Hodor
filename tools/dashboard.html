@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hodor — telemetry dashboard</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2024; --muted: #6b7280;
+    --border: #e5e7eb; --accent: #3b6ef5; --track: #eceef1;
+    --crit: #e5484d; --high: #f76b15; --med: #d9a600; --ok: #30a46c;
+    --pc: #8b5cf6; --plugin: #3b6ef5; --personal: #6b7280;
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 1px 8px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --panel: #171a1f; --ink: #e6e8eb; --muted: #9aa1ab;
+      --border: #262a30; --accent: #6b93ff; --track: #23272e;
+      --crit: #ff6369; --high: #ff8b3d; --med: #f5d90a; --ok: #4cc38a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); }
+
+  #drop { margin: 18px 0; border: 1.5px dashed var(--border); border-radius: 12px;
+    background: var(--panel); padding: 22px; text-align: center; cursor: pointer; transition: .15s; }
+  #drop.drag { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+  #drop .big { font-weight: 600; }
+  #drop .hint { color: var(--muted); font-size: 12.5px; margin-top: 6px; word-break: break-all; }
+  #drop input { display: none; }
+
+  #progressWrap { display: none; margin: 12px 0; }
+  #progressWrap.on { display: block; }
+  .bar { height: 10px; background: var(--track); border-radius: 6px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .1s linear; }
+  #progressMsg { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 12px 0 4px; }
+  .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .tile .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .tile .v { font-size: 24px; font-weight: 700; margin-top: 2px; }
+  .tile .v small { font-size: 13px; font-weight: 500; color: var(--muted); }
+
+  section.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; margin: 16px 0; box-shadow: var(--shadow); }
+  section.panel h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  section.panel h2 .count { color: var(--muted); font-weight: 500; font-size: 13px; }
+
+  .sevrow { display: grid; grid-template-columns: 90px 1fr 48px; align-items: center; gap: 10px; margin: 8px 0; }
+  .sevrow .lbl { font-weight: 600; text-transform: capitalize; }
+  .sevrow .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .track { background: var(--track); border-radius: 6px; height: 20px; overflow: hidden; }
+  .track > span { display: block; height: 100%; border-radius: 6px; }
+  .s-critical > span { background: var(--crit); }
+  .s-high > span { background: var(--high); }
+  .s-medium > span { background: var(--med); }
+  .s-other > span { background: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  .barcell { position: relative; min-width: 120px; }
+  .barcell .b { position: absolute; left: 0; top: 3px; bottom: 3px; background: color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 4px; }
+  .barcell .t { position: relative; padding-left: 6px; font-variant-numeric: tabular-nums; }
+
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; border: 1px solid var(--border); }
+  .pill.skill { color: var(--accent); }
+  .pill.agent { color: var(--pc); }
+  .pill.plainconcepts { background: color-mix(in srgb, var(--pc) 15%, transparent); border-color: transparent; }
+  .pill.plugin { background: color-mix(in srgb, var(--plugin) 15%, transparent); border-color: transparent; }
+  .pill.personal, .pill.external, .pill.unknown { color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip { background: var(--track); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+  .chip b { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 30px; }
+  .tblwrap { overflow-x: auto; }
+  footer { margin-top: 26px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🛡️ Hodor — telemetry dashboard</h1>
+    <span class="sub">policy findings by severity · skills &amp; agents by usage</span>
+  </header>
+
+  <label id="drop">
+    <div class="big">Drop your log file here, or click to choose</div>
+    <div class="hint">Default location: <code id="logpath">%LOCALAPPDATA%\PlainConcepts\ai-hooks\logs\telemetry-queue.jsonl</code><br>
+      You can also drop <code>security.jsonl</code> and <code>hooks-error.jsonl</code> together. Everything stays in your browser.</div>
+    <input id="file" type="file" accept=".jsonl,.json,.log,.txt" multiple>
+  </label>
+
+  <div id="progressWrap">
+    <div class="bar"><span id="progressBar"></span></div>
+    <div id="progressMsg"></div>
+  </div>
+
+  <div id="content"></div>
+
+  <footer>Read-only · offline · nothing leaves this page. Reload to clear.</footer>
+</div>
+
+<script>
+"use strict";
+
+// ---------- Parsing / normalization ----------
+function normalizeRecord(o) {
+  if (!o || typeof o !== "object") return null;
+
+  // Top-level event (security.jsonl / hooks-error.jsonl)
+  if (o.event) {
+    const ev = String(o.event);
+    const type = ev.indexOf("policy") === 0 ? "policy" : (ev === "hook_issue" ? "error" : null);
+    if (!type) return null;
+    return { origin: "log", type, ts: o.ts || null,
+      rule: o.rule || null, severity: lc(o.severity), action: o.action || null,
+      agent: o.agent || null, error: o.error || null, version: o.version || null,
+      skill: null, plugin: null, source: null, kind: null };
+  }
+
+  // OTel record: PS uses {name, attributes:{...}}, bash uses {body:{stringValue}, attributes:[{key,value}]}
+  const name = o.name || (o.body && o.body.stringValue) || null;
+  if (!name) return null;
+  let attrs = {};
+  if (o.attributes && !Array.isArray(o.attributes)) attrs = o.attributes;
+  else if (Array.isArray(o.attributes)) {
+    for (const a of o.attributes) {
+      if (a && a.key) attrs[a.key] = (a.value && a.value.stringValue !== undefined) ? a.value.stringValue : (a.value != null ? a.value : "");
+    }
+  }
+  const g = k => (attrs[k] !== undefined ? attrs[k] : null);
+  const type = name.indexOf("policy") >= 0 ? "policy"
+             : name.indexOf("skill_usage") >= 0 ? "skill"
+             : name.indexOf("hook_issue") >= 0 ? "error" : null;
+  if (!type) return null;
+  const ts = o.ts || (o.timeUnixNano ? new Date(Number(o.timeUnixNano) / 1e6).toISOString() : null);
+  return { origin: "otel", type, ts,
+    rule: g("pc.rule"), severity: lc(g("pc.severity")), action: g("pc.action"),
+    agent: g("pc.agent"), error: g("pc.error"), version: g("pc.hooks_version"),
+    skill: g("pc.skill"), plugin: g("pc.plugin"), source: g("pc.source"), kind: g("pc.kind") };
+}
+function lc(v) { return v ? String(v).toLowerCase() : null; }
+
+function parseLines(text) {
+  const lines = String(text).split(/\r?\n/);
+  const events = []; let skipped = 0;
+  for (let line of lines) {
+    if (!line) continue;
+    line = line.replace(/^﻿/, "").trim();
+    if (!line) continue;
+    let o; try { o = JSON.parse(line); } catch (_) { skipped++; continue; }
+    const ev = normalizeRecord(o);
+    if (ev) events.push(ev); else skipped++;
+  }
+  return { events, total: lines.length, skipped };
+}
+
+async function parseLinesBatched(text, onProgress) {
+  const lines = String(text).split(/\r?\n/);
+  const events = []; let skipped = 0;
+  const N = lines.length, CHUNK = 5000;
+  for (let i = 0; i < N; i += CHUNK) {
+    const end = Math.min(i + CHUNK, N);
+    for (let j = i; j < end; j++) {
+      let line = lines[j];
+      if (!line) continue;
+      line = line.replace(/^﻿/, "").trim();
+      if (!line) continue;
+      let o; try { o = JSON.parse(line); } catch (_) { skipped++; continue; }
+      const ev = normalizeRecord(o);
+      if (ev) events.push(ev); else skipped++;
+    }
+    if (onProgress) onProgress(end / N);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  return { events, total: N, skipped };
+}
+
+// ---------- Aggregation ----------
+function aggregate(events) {
+  const hasLogPolicy = events.some(e => e.type === "policy" && e.origin === "log");
+  const policy = events.filter(e => e.type === "policy" && (hasLogPolicy ? e.origin === "log" : true));
+  const hasLogErr = events.some(e => e.type === "error" && e.origin === "log");
+  const errors = events.filter(e => e.type === "error" && (hasLogErr ? e.origin === "log" : true));
+  const skills = events.filter(e => e.type === "skill");
+
+  const sev = { critical: 0, high: 0, medium: 0, other: 0 };
+  policy.forEach(e => { const s = e.severity || "other"; if (sev[s] === undefined) sev.other++; else sev[s]++; });
+
+  const ruleMap = {};
+  policy.forEach(e => {
+    const k = e.rule || "(unknown)";
+    const r = ruleMap[k] || (ruleMap[k] = { rule: k, severity: e.severity || "", block: 0, warn: 0, total: 0 });
+    if (e.action === "block") r.block++; else if (e.action === "warn") r.warn++;
+    r.total++; if (!r.severity && e.severity) r.severity = e.severity;
+  });
+  const rules = Object.values(ruleMap).sort((a, b) => b.total - a.total);
+  const action = { block: 0, warn: 0 };
+  policy.forEach(e => { if (e.action === "block") action.block++; else if (e.action === "warn") action.warn++; });
+
+  const skillMap = {};
+  skills.forEach(e => {
+    const kind = e.kind || "skill";
+    const name = e.skill || "(unknown)";
+    const plugin = e.plugin || "";
+    const key = kind + "|" + name + "|" + plugin;
+    const s = skillMap[key] || (skillMap[key] = { name, kind, plugin, source: e.source || "unknown", count: 0 });
+    s.count++;
+  });
+  const skillRows = Object.values(skillMap).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const bySource = {}, byKind = {};
+  skills.forEach(e => {
+    const src = e.source || "unknown"; bySource[src] = (bySource[src] || 0) + 1;
+    const k = e.kind || "skill"; byKind[k] = (byKind[k] || 0) + 1;
+  });
+
+  const errMap = {};
+  errors.forEach(e => { const key = (e.error || "(unknown error)") + " " + (e.agent || "?"); errMap[key] = (errMap[key] || 0) + 1; });
+  const errRows = Object.entries(errMap).map(([k, c]) => {
+    const [msg, agent] = k.split(" "); return { error: msg, agent, count: c };
+  }).sort((a, b) => b.count - a.count);
+
+  const all = policy.concat(skills, errors);
+  // Compute min/max with a loop (Math.min(...arr) overflows the stack on large files).
+  let tMin = Infinity, tMax = -Infinity, haveTime = false;
+  const agentSet = new Set();
+  for (const e of all) {
+    if (e.agent) agentSet.add(e.agent);
+    if (e.ts) { const t = Date.parse(e.ts); if (!isNaN(t)) { haveTime = true; if (t < tMin) tMin = t; if (t > tMax) tMax = t; } }
+  }
+  return {
+    total: all.length, policyCount: policy.length, skillCount: skills.length, errorCount: errors.length,
+    range: haveTime ? { min: new Date(tMin), max: new Date(tMax) } : null,
+    agents: [...agentSet], sev, rules, action, skillRows, bySource, byKind, errRows
+  };
+}
+
+// ---------- Rendering ----------
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function fmtDate(d) { return d ? d.toISOString().replace("T", " ").slice(0, 19) + "Z" : "—"; }
+
+function render(input, meta) {
+  const events = typeof input === "string" ? parseLines(input).events : input;
+  const a = aggregate(events);
+  paint(a, meta || {});
+  return a;
+}
+
+function paint(a, meta) {
+  const c = document.getElementById("content");
+  if (a.total === 0) {
+    c.innerHTML = '<div class="empty">No recognizable telemetry in the loaded file(s).</div>';
+    return;
+  }
+  const sevMax = Math.max(1, a.sev.critical, a.sev.high, a.sev.medium, a.sev.other);
+  const sevBar = (name, key) => {
+    const n = a.sev[key];
+    return `<div class="sevrow"><div class="lbl">${name}</div>
+      <div class="track s-${key}"><span style="width:${(n / sevMax * 100).toFixed(1)}%"></span></div>
+      <div class="num">${n}</div></div>`;
+  };
+
+  const skillMax = a.skillRows.length ? a.skillRows[0].count : 1;
+  const skillRowsHtml = a.skillRows.map(s => `
+    <tr>
+      <td class="barcell"><span class="b" style="width:${(s.count / skillMax * 100).toFixed(1)}%"></span>
+        <span class="t"><strong>${esc(s.name)}</strong></span></td>
+      <td><span class="pill ${s.kind === "agent" ? "agent" : "skill"}">${esc(s.kind)}</span></td>
+      <td>${s.plugin ? esc(s.plugin) : '<span class="muted">—</span>'}</td>
+      <td><span class="pill ${esc(s.source)}">${esc(s.source)}</span></td>
+      <td class="num">${s.count}</td>
+    </tr>`).join("");
+
+  const ruleRowsHtml = a.rules.map(r => `
+    <tr>
+      <td><strong>${esc(r.rule)}</strong></td>
+      <td><span class="pill s-${r.severity}">${esc(r.severity || "—")}</span></td>
+      <td class="num">${r.block || ""}</td>
+      <td class="num">${r.warn || ""}</td>
+      <td class="num">${r.total}</td>
+    </tr>`).join("");
+
+  const chip = (label, n) => `<span class="chip">${esc(label)} <b>${n}</b></span>`;
+  const sourceChips = Object.entries(a.bySource).sort((x, y) => y[1] - x[1]).map(([k, v]) => chip(k, v)).join("");
+  const kindChips = Object.entries(a.byKind).sort((x, y) => y[1] - x[1]).map(([k, v]) => chip(k, v)).join("");
+
+  let html = "";
+
+  // Summary tiles
+  const range = a.range ? `${fmtDate(a.range.min)} <span class="muted">→</span> ${fmtDate(a.range.max)}` : "—";
+  html += `<div class="tiles">
+    <div class="tile"><div class="k">Events</div><div class="v">${a.total}</div></div>
+    <div class="tile"><div class="k">Policy findings</div><div class="v">${a.policyCount}</div></div>
+    <div class="tile"><div class="k">Skill / agent uses</div><div class="v">${a.skillCount}</div></div>
+    <div class="tile"><div class="k">Hook errors</div><div class="v">${a.errorCount}</div></div>
+    <div class="tile"><div class="k">Agents</div><div class="v">${a.agents.length ? esc(a.agents.join(", ")) : "—"}</div></div>
+  </div>`;
+  html += `<div class="sub" style="margin:2px 2px 0">Range: ${range}` +
+    (meta.files ? ` · Files: ${esc(meta.files.join(", "))}` : "") +
+    (meta.skipped ? ` · <span class="muted">${meta.skipped} line(s) skipped</span>` : "") + `</div>`;
+
+  // Policy panel
+  if (a.policyCount > 0) {
+    html += `<section class="panel"><h2>Policy findings by severity <span class="count">${a.policyCount} total · ${a.action.block} blocked · ${a.action.warn} warned</span></h2>
+      ${sevBar("critical", "critical")}${sevBar("high", "high")}${sevBar("medium", "medium")}${a.sev.other ? sevBar("other", "other") : ""}
+      <div class="tblwrap" style="margin-top:12px"><table>
+        <thead><tr><th>Rule</th><th>Severity</th><th class="num">Block</th><th class="num">Warn</th><th class="num">Total</th></tr></thead>
+        <tbody>${ruleRowsHtml}</tbody></table></div>
+    </section>`;
+  }
+
+  // Skills panel
+  if (a.skillCount > 0) {
+    html += `<section class="panel"><h2>Skills &amp; agents by usage <span class="count">${a.skillRows.length} distinct · ${a.skillCount} uses</span></h2>
+      <div class="chips">${sourceChips}${kindChips}</div>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Name</th><th>Type</th><th>Plugin</th><th>Source</th><th class="num">Uses</th></tr></thead>
+        <tbody>${skillRowsHtml}</tbody></table></div>
+    </section>`;
+  }
+
+  // Errors panel
+  if (a.errorCount > 0) {
+    const errRowsHtml = a.errRows.map(e => `<tr><td>${esc(e.error)}</td><td>${esc(e.agent)}</td><td class="num">${e.count}</td></tr>`).join("");
+    html += `<section class="panel"><h2>Hook errors <span class="count">${a.errorCount} total</span></h2>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Error</th><th>Agent</th><th class="num">Count</th></tr></thead>
+        <tbody>${errRowsHtml}</tbody></table></div>
+    </section>`;
+  }
+
+  c.innerHTML = html;
+}
+
+// ---------- File loading (with progress) ----------
+function readFileWithProgress(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    r.onload = () => { if (onProgress) onProgress(1); resolve(String(r.result || "")); };
+    r.onerror = () => reject(r.error);
+    r.readAsText(file);
+  });
+}
+
+const progWrap = document.getElementById("progressWrap");
+const progBar = document.getElementById("progressBar");
+const progMsg = document.getElementById("progressMsg");
+function setProgress(frac, msg) { progBar.style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + "%"; if (msg) progMsg.textContent = msg; }
+function showProgress() { progWrap.classList.add("on"); setProgress(0, ""); }
+function hideProgress() { progWrap.classList.remove("on"); }
+
+async function loadFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  showProgress();
+  let allEvents = [], totalLines = 0, skipped = 0; const names = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]; names.push(f.name);
+    const text = await readFileWithProgress(f, frac => setProgress((i + frac * 0.5) / files.length, "Reading " + f.name + " …"));
+    const res = await parseLinesBatched(text, frac => setProgress((i + 0.5 + frac * 0.5) / files.length, "Processing " + f.name + " … " + Math.round(frac * 100) + "%"));
+    allEvents = allEvents.concat(res.events); totalLines += res.total; skipped += res.skipped;
+  }
+  setProgress(1, "Done · " + allEvents.length + " events, " + skipped + " skipped");
+  setTimeout(hideProgress, 400);
+  render(allEvents, { files: names, totalLines, skipped });
+}
+
+// ---------- Wiring ----------
+const drop = document.getElementById("drop");
+const fileInput = document.getElementById("file");
+fileInput.addEventListener("change", e => loadFiles(e.target.files));
+["dragenter", "dragover"].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("drag"); }));
+["dragleave", "drop"].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if (ev === "drop" || e.target === document || e.relatedTarget === null) drop.classList.remove("drag"); }));
+document.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("drag"); if (e.dataTransfer && e.dataTransfer.files) loadFiles(e.dataTransfer.files); });
+
+// Expose pure logic for tests / injection
+window.Hodor = { parseLines, parseLinesBatched, normalizeRecord, aggregate, render };
+</script>
+</body>
+</html>
