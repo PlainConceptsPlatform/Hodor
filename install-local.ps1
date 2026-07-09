@@ -4,16 +4,18 @@
 # Without admin rights, use a different target folder:
 #   ... -File .\install-local.ps1 -Dest "$env:LOCALAPPDATA\PlainConcepts\ai-hooks"
 param(
-    [string]$Dest = 'C:\ProgramData\PlainConcepts\ai-hooks'
+    [string]$Dest = 'C:\ProgramData\PlainConcepts\ai-hooks',
+    [switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'
 $Src = $PSScriptRoot
 
 Write-Host "== Company AI Hooks: local test installation =="
 
-# 1. Copy scripts to the machine-wide folder
+# 1. Copy scripts to the machine-wide folder (exclude the repo's .git history)
 if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest -Force | Out-Null }
-Copy-Item -Path (Join-Path $Src '*') -Destination $Dest -Recurse -Force
+Get-ChildItem -Path $Src -Force | Where-Object { $_.Name -ne '.git' } |
+    Copy-Item -Destination $Dest -Recurse -Force
 Write-Host "[OK] Scripts copied to $Dest"
 
 # 1b. Stamp build-info.json (version derived from git in the SOURCE repo) into the install
@@ -56,15 +58,37 @@ if (-not (Test-Path $claudeSettingsPath)) {
     }
 }
 
+# 5. Verify the install: doctor (version + wiring) then the regression suite
 Write-Host ""
-Write-Host "== Check the installed version =="
-Write-Host ('  powershell -NoProfile -ExecutionPolicy Bypass -File "' + $Dest + '\tools\hodor-version.ps1"')
-Write-Host ('  (or: ... -File "' + $Dest + '\dispatch.ps1" -Event version)')
+Write-Host "== Installed version =="
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Dest 'tools\hodor-version.ps1')
+
+if (-not $SkipTests) {
+    Write-Host ""
+    Write-Host "== Verifying install (regression suite) =="
+    $testScript = Join-Path $Dest 'tests\run.ps1'
+    if (Test-Path $testScript) {
+        # Run in a child process so the suite's own 'exit' code can't terminate this installer.
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $testScript | Select-Object -Last 1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] Install verified: all tests passed." -ForegroundColor Green
+        } else {
+            Write-Host "[FAIL] Regression suite reported failures (exit $LASTEXITCODE). Run for detail:" -ForegroundColor Red
+            Write-Host ('  powershell -NoProfile -ExecutionPolicy Bypass -File "' + $testScript + '"')
+        }
+    } else {
+        Write-Host "[!] tests\run.ps1 not found in the install (skipping verification)."
+    }
+}
+
 Write-Host ""
 Write-Host "== Remaining manual steps =="
 Write-Host "1. VS Code: enable the 'chat.useHooks' setting (agent hooks are in preview)."
 Write-Host "2. Edit $Dest\config\settings.json -> identity.email and, if available, otel.endpoint."
+Write-Host "3. Restart Claude Code / reload VS Code so the hooks load."
 Write-Host ""
-Write-Host "== Quick test (no IDE needed) =="
-Write-Host ('  ''{"prompt":"upload this with token ghp_0123456789abcdefghijklmnopqrstuvwxyz12"}'' | powershell -NoProfile -ExecutionPolicy Bypass -File "' + $Dest + '\dispatch.ps1" -Event userPromptSubmitted -Agent test')
-Write-Host "  It must print a warning systemMessage and write to $logDir\security.jsonl"
+Write-Host "== Quick manual check (no IDE needed) =="
+Write-Host "  A critical secret must BLOCK the prompt (exit 2, decision:block):"
+Write-Host ('  ''{"prompt":"token ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcd"}'' | powershell -NoProfile -ExecutionPolicy Bypass -File "' + $Dest + '\dispatch.ps1" -Event UserPromptSubmit -Agent claude-code')
+Write-Host "  Re-check the version anytime with:"
+Write-Host ('  powershell -NoProfile -ExecutionPolicy Bypass -File "' + $Dest + '\dispatch.ps1" -Event version')
