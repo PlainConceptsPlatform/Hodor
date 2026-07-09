@@ -10,8 +10,21 @@ export AIHOOKS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$AIHOOKS_ROOT/lib/common.sh"
 source "$AIHOOKS_ROOT/lib/otel.sh"
 
-VERSION="unknown"
-[ -f "$AIHOOKS_ROOT/VERSION" ] && VERSION="$(head -n1 "$AIHOOKS_ROOT/VERSION" | tr -d '[:space:]')"
+VERSION="$(hooks_version)"
+
+# 'version' is a diagnostic command: answer and exit BEFORE reading stdin (which would block).
+if [ "$EVENT" = "version" ]; then
+  bi="$AIHOOKS_ROOT/build-info.json"
+  commit="unknown"; count=0; bdate=""
+  if [ -f "$bi" ] && command -v jq >/dev/null 2>&1; then
+    commit="$(jq -r '.commit // "unknown"' "$bi" 2>/dev/null)"
+    count="$(jq -r '.commitCount // 0' "$bi" 2>/dev/null)"
+    bdate="$(jq -r '.buildDate // ""' "$bi" 2>/dev/null)"
+  fi
+  printf '{"name":"hodor","version":"%s","commit":"%s","commitCount":%s,"buildDate":"%s","root":"%s"}\n' \
+    "$(json_escape "$VERSION")" "$(json_escape "$commit")" "${count:-0}" "$(json_escape "$bdate")" "$(json_escape "$AIHOOKS_ROOT")"
+  exit 0
+fi
 
 INPUT="$(cat 2>/dev/null || true)"
 
@@ -52,7 +65,7 @@ main() {
         rank="$(severity_rank "$sev")"
         if [ "$rank" -ge "$threshold" ]; then action="block"; evt="policy_block"; else action="warn"; evt="policy_warning"; fi
         write_log 'security.jsonl' \
-          "{\"ts\":\"$ts\",\"event\":\"$evt\",\"agent\":\"$AGENT\",\"rule\":\"$rule\",\"severity\":\"$sev\",\"action\":\"$action\",\"evidence\":\"$(json_escape "$red")\"}"
+          "{\"ts\":\"$ts\",\"event\":\"$evt\",\"agent\":\"$AGENT\",\"rule\":\"$rule\",\"severity\":\"$sev\",\"action\":\"$action\",\"evidence\":\"$(json_escape "$red")\",\"version\":\"$(json_escape "$VERSION")\"}"
         otel_send 'pc.ai.policy_warning' "pc.rule=$rule" "pc.severity=$sev" "pc.action=$action" "pc.agent=$AGENT" \
           "pc.evidence=$red" "pc.user_hash=$UHASH" "pc.hooks_version=$VERSION"
         if [ "$action" = "block" ]; then
@@ -68,7 +81,7 @@ main() {
       while IFS='|' read -r skill plugin source kind; do
         [ -z "$skill" ] && continue
         otel_send 'pc.ai.skill_usage' "pc.skill=$skill" "pc.plugin=$plugin" "pc.source=$source" "pc.kind=$kind" \
-          "pc.agent=$AGENT" "pc.user_hash=$UHASH"
+          "pc.agent=$AGENT" "pc.user_hash=$UHASH" "pc.hooks_version=$VERSION"
       done < <("$AIHOOKS_ROOT/layers/30-skills/skill-usage.sh" "$prompt" "" "")
 
       logp="$LOG_DIR/security.jsonl"
@@ -103,7 +116,7 @@ main() {
         while IFS='|' read -r skill plugin source k; do
           [ -z "$skill" ] && continue
           otel_send 'pc.ai.skill_usage' "pc.skill=$skill" "pc.plugin=$plugin" "pc.source=$source" "pc.kind=$k" \
-            "pc.agent=$AGENT" "pc.user_hash=$UHASH"
+            "pc.agent=$AGENT" "pc.user_hash=$UHASH" "pc.hooks_version=$VERSION"
         done < <("$AIHOOKS_ROOT/layers/30-skills/skill-usage.sh" "" "$name" "$kind")
       fi
       ;;

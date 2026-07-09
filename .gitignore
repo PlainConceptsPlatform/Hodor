@@ -1,0 +1,5 @@
+# Version identity is stamped at install/package time, never committed.
+build-info.json
+
+# Local runtime logs (if ever produced inside the repo tree)
+logs/

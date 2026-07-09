@@ -34,6 +34,28 @@ severity_rank() { # severity_rank <severity> -> numeric rank
   esac
 }
 
+hooks_version() { # full version identity: build-info.json -> live git -> fallback
+  local root bi base commit count sha version
+  root="$AIHOOKS_ROOT"
+  bi="$root/build-info.json"
+  if [ -f "$bi" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      version="$(jq -r '.version // empty' "$bi" 2>/dev/null)"
+    else
+      version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$bi" | head -n1)"
+    fi
+    [ -n "$version" ] && { printf '%s' "$version"; return; }
+  fi
+  base="0.0"
+  [ -f "$root/VERSION" ] && base="$(head -n1 "$root/VERSION" | tr -d '[:space:]')"
+  commit="unknown"; count=0
+  if command -v git >/dev/null 2>&1; then
+    sha="$(git -C "$root" rev-parse --short HEAD 2>/dev/null)"
+    if [ -n "$sha" ]; then commit="$sha"; count="$(git -C "$root" rev-list --count HEAD 2>/dev/null || echo 0)"; fi
+  fi
+  if [ "$commit" = "unknown" ]; then printf '%s' "$base.0+gunknown"; else printf '%s' "$base.$count+g$commit"; fi
+}
+
 redact() { # redact <text>
   local t="$1"
   if [ "${#t}" -le 12 ]; then echo '[REDACTED]'; else echo "${t:0:4}...${t: -4}"; fi

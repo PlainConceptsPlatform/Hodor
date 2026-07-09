@@ -1,4 +1,4 @@
-# Hodor — Company AI Hooks 1.1
+# Hodor — Company AI Hooks
 
 Corporate hooks for VS Code (Copilot Chat), GitHub Copilot CLI and Claude Code.
 
@@ -21,7 +21,8 @@ No maintained catalog is required — classification is derived from the name at
 
 ```
 ai-hooks/
-├── VERSION
+├── VERSION                        # MAJOR.MINOR base (e.g. 1.2); patch is derived from git per commit
+├── build-info.json               # stamped at install/package time (gitignored): full version + commit + date
 ├── dispatch.ps1 / dispatch.sh     # single entry point: dispatch -Event <event> -Agent <agent>
 ├── lib/                           # common, logrotate, otel (PS + bash)
 ├── layers/
@@ -34,9 +35,32 @@ ai-hooks/
 │   ├── copilot/company-hooks.json # → ~/.copilot/hooks/ (VS Code + Copilot CLI)
 │   └── claude/hooks-fragment.json # → managed settings or ~/.claude/settings.json
 ├── tools/
-│   └── test-payloads.ps1          # deterministic block/warn/skill tests
+│   ├── test-payloads.ps1          # deterministic block/warn/skill tests
+│   ├── hodor-version.ps1 / .sh    # doctor: version + paths + hook wiring
+│   └── stamp-build-info.ps1       # computes build-info.json from git (shared: install + CI)
 └── install-local.ps1              # local test installation (Windows)
 ```
+
+## Versioning & checking the installed version
+
+The version updates **on every commit**, derived from git — no manual bumps:
+
+- `VERSION` holds only the base `MAJOR.MINOR` (e.g. `1.2`).
+- The **full version** is `MAJOR.MINOR.<commit-count>+g<short-sha>` (e.g. `1.2.42+gabc1234`); the patch is `git rev-list --count HEAD`, so it increments per commit.
+- `build-info.json` (git-ignored) is stamped at install/package time by `tools/stamp-build-info.ps1` and carries the resolved `version`, `commit`, `commitCount`, `buildDate`. At runtime the version resolves from `build-info.json` → live git (dev checkout) → fallback.
+- The full version is attached to **every** telemetry event (`pc.hooks_version`) and written into each `security.jsonl` record — so a report can be traced to exact code.
+
+When something misbehaves, run the **doctor**:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\PlainConcepts\ai-hooks\tools\hodor-version.ps1"
+# or just the identifier:
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\PlainConcepts\ai-hooks\dispatch.ps1" -Event version
+```
+
+It prints the version, install/config/log paths, whether the Claude Code and Copilot hooks are wired, and the last few hook errors (plus a JSON line to paste into a report). On macOS/Linux use `tools/hodor-version.sh` / `./dispatch.sh version`.
+
+> **Future CI contract:** the packaging workflow must check out with full history (`fetch-depth: 0`, needed for `rev-list --count`), run `tools/stamp-build-info.ps1` before packaging the `.intunewin`, and publish to Intune via Microsoft Graph. `build-info.json` (or `HKLM\SOFTWARE\PlainConcepts\AIHooks\Version`) backs the Intune detection rule.
 
 ## Local installation (Windows)
 

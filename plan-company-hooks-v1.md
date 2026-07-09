@@ -155,10 +155,10 @@ company-ai-hooks/
 ### 5.2 Pipeline (en cada merge a `main`)
 
 1. Tests de contrato (los payloads de los 3 agentes producen la decisión esperada).
-2. Bump de `VERSION` + tag.
-3. `build.ps1` genera el `.intunewin` (módulo **IntuneWin32App** de MSEndpointMgr; runner Windows).
+2. **Versión derivada de git** (checkout con `fetch-depth: 0`): `tools/stamp-build-info.ps1` calcula `MAJOR.MINOR.<commit-count>+g<sha>` (base en `VERSION`) y escribe `build-info.json` en el paquete. El patch sube solo en cada commit; no hay bump manual. Tag opcional con esa versión.
+3. `build.ps1` genera el `.intunewin` (módulo **IntuneWin32App** de MSEndpointMgr; runner Windows) incluyendo `build-info.json`.
 4. Publicación automática en Intune vía Graph (`Add-IntuneWin32App`, service principal con certificado en Key Vault) al ring de pilotos; promoción manual al ring general.
-5. Detection rule: `HKLM\SOFTWARE\PlainConcepts\AIHooks\Version` = `VERSION`. Supersedence entre versiones.
+5. Detection rule: `build-info.json` (o `HKLM\SOFTWARE\PlainConcepts\AIHooks\Version`) = versión completa. Supersedence entre versiones.
 6. **Remediation** diaria (contexto usuario): verifica hash de `dispatch` y existencia de `~/.copilot/hooks/company-hooks.json`; repara drift.
 
 Este patrón ("configuration as code" para Intune, pipeline que empaqueta y publica) es práctica documentada y común a nivel enterprise — referencias: IntuneAppFactory de MSEndpointMgr (exactamente este flujo), blog oficial de Intune Customer Success.

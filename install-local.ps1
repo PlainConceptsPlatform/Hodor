@@ -16,6 +16,9 @@ if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest -Force | 
 Copy-Item -Path (Join-Path $Src '*') -Destination $Dest -Recurse -Force
 Write-Host "[OK] Scripts copied to $Dest"
 
+# 1b. Stamp build-info.json (version derived from git in the SOURCE repo) into the install
+& (Join-Path $Src 'tools\stamp-build-info.ps1') -SourceRoot $Src -OutFile (Join-Path $Dest 'build-info.json')
+
 # 2. User log folder
 $logDir = Join-Path $env:LOCALAPPDATA 'PlainConcepts\ai-hooks\logs'
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
@@ -53,6 +56,10 @@ if (-not (Test-Path $claudeSettingsPath)) {
     }
 }
 
+Write-Host ""
+Write-Host "== Check the installed version =="
+Write-Host ('  powershell -NoProfile -ExecutionPolicy Bypass -File "' + $Dest + '\tools\hodor-version.ps1"')
+Write-Host ('  (or: ... -File "' + $Dest + '\dispatch.ps1" -Event version)')
 Write-Host ""
 Write-Host "== Remaining manual steps =="
 Write-Host "1. VS Code: enable the 'chat.useHooks' setting (agent hooks are in preview)."

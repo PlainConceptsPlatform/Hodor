@@ -39,6 +39,33 @@ function Get-SeverityRank {
     }
 }
 
+function Get-HooksBuildInfo {
+    # Full version identity. Precedence: build-info.json (installed/packaged) -> live git (dev) -> fallback.
+    $root = Get-AiHooksRoot
+    $biPath = Join-Path $root 'build-info.json'
+    if (Test-Path $biPath) {
+        try {
+            $bi = Get-Content $biPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($bi.version) { return $bi }
+        } catch { }
+    }
+    $base = '0.0'
+    $vf = Join-Path $root 'VERSION'
+    if (Test-Path $vf) { $l = (Get-Content $vf | Select-Object -First 1); if ($l) { $base = $l.Trim() } }
+    $commit = 'unknown'; $count = 0
+    try {
+        $sha = (& git -C $root rev-parse --short HEAD 2>$null)
+        $cnt = (& git -C $root rev-list --count HEAD 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $sha) { $commit = "$sha".Trim(); if ($cnt) { $count = [int]("$cnt".Trim()) } }
+    } catch { }
+    $version = if ($commit -eq 'unknown') { "$base.0+gunknown" } else { "$base.$count+g$commit" }
+    return [pscustomobject]@{ version = $version; base = $base; commit = $commit; commitCount = $count; buildDate = '' }
+}
+
+function Get-HooksVersion {
+    return (Get-HooksBuildInfo).version
+}
+
 function Get-RedactedText {
     param([string]$Text)
     if (-not $Text) { return '[REDACTED]' }

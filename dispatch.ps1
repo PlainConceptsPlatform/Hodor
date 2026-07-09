@@ -12,6 +12,20 @@ $Root = $PSScriptRoot
 . (Join-Path $Root 'lib\common.ps1')
 . (Join-Path $Root 'lib\otel.ps1')
 
+# 'version' is a diagnostic command: answer and exit BEFORE reading stdin (which would block interactively).
+if ($Event -match '^version$') {
+    $bi = Get-HooksBuildInfo
+    [pscustomobject]@{
+        name        = 'hodor'
+        version     = $bi.version
+        commit      = $bi.commit
+        commitCount = $bi.commitCount
+        buildDate   = $bi.buildDate
+        root        = $Root
+    } | ConvertTo-Json -Compress
+    exit 0
+}
+
 function Get-Field {
     param($Obj, [string[]]$Names)
     if (-not $Obj) { return $null }
@@ -27,8 +41,7 @@ $hooksVersion = 'unknown'
 $blockExit = 0        # set to 2 when a prompt is blocked
 try {
     $settings = Get-AiHooksSettings
-    $vPath = Join-Path $Root 'VERSION'
-    if (Test-Path $vPath) { $hooksVersion = (Get-Content $vPath | Select-Object -First 1).Trim() }
+    $hooksVersion = Get-HooksVersion
 
     $raw = [System.Console]::In.ReadToEnd()
 
@@ -75,6 +88,7 @@ try {
                     severity = $f.severity
                     action   = $action
                     evidence = $red
+                    version  = $hooksVersion
                 })
                 Send-OtelEvent -Settings $settings -Name 'pc.ai.policy_warning' -Attributes @{
                     'pc.rule'          = $f.rule
@@ -92,12 +106,13 @@ try {
             $skills = & (Join-Path $Root 'layers\30-skills\skill-usage.ps1') -Prompt $prompt -Root $Root
             foreach ($s in $skills) {
                 Send-OtelEvent -Settings $settings -Name 'pc.ai.skill_usage' -Attributes @{
-                    'pc.skill'     = $s.skill
-                    'pc.plugin'    = $s.plugin
-                    'pc.source'    = $s.source
-                    'pc.kind'      = $s.kind
-                    'pc.agent'     = $Agent
-                    'pc.user_hash' = $userHash
+                    'pc.skill'         = $s.skill
+                    'pc.plugin'        = $s.plugin
+                    'pc.source'        = $s.source
+                    'pc.kind'          = $s.kind
+                    'pc.agent'         = $Agent
+                    'pc.user_hash'     = $userHash
+                    'pc.hooks_version' = $hooksVersion
                 }
             }
 
@@ -139,12 +154,13 @@ try {
                 $skills = & (Join-Path $Root 'layers\30-skills\skill-usage.ps1') -SkillName $name -Kind $kind -Root $Root
                 foreach ($s in $skills) {
                     Send-OtelEvent -Settings $settings -Name 'pc.ai.skill_usage' -Attributes @{
-                        'pc.skill'     = $s.skill
-                        'pc.plugin'    = $s.plugin
-                        'pc.source'    = $s.source
-                        'pc.kind'      = $s.kind
-                        'pc.agent'     = $Agent
-                        'pc.user_hash' = $userHash
+                        'pc.skill'         = $s.skill
+                        'pc.plugin'        = $s.plugin
+                        'pc.source'        = $s.source
+                        'pc.kind'          = $s.kind
+                        'pc.agent'         = $Agent
+                        'pc.user_hash'     = $userHash
+                        'pc.hooks_version' = $hooksVersion
                     }
                 }
             }
