@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "hooks": {
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "/opt/plainconcepts/ai-hooks/dispatch.sh userPromptSubmitted copilot",
+        "powershell": "& 'C:\\ProgramData\\PlainConcepts\\ai-hooks\\dispatch.ps1' -Event userPromptSubmitted -Agent copilot",
+        "timeoutSec": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "/opt/plainconcepts/ai-hooks/dispatch.sh preToolUse copilot",
+        "powershell": "& 'C:\\ProgramData\\PlainConcepts\\ai-hooks\\dispatch.ps1' -Event preToolUse -Agent copilot",
+        "timeoutSec": 10
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "/opt/plainconcepts/ai-hooks/dispatch.sh sessionEnd copilot",
+        "powershell": "& 'C:\\ProgramData\\PlainConcepts\\ai-hooks\\dispatch.ps1' -Event sessionEnd -Agent copilot",
+        "timeoutSec": 15
+      }
+    ]
+  }
+}

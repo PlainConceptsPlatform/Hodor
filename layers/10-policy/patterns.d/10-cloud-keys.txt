@@ -1,0 +1,7 @@
+# Format: NAME|SEVERITY|REGEX  (.NET and grep -E compatible)
+AWS_ACCESS_KEY|critical|AKIA[0-9A-Z]{16}
+AWS_SECRET_KEY|critical|aws_secret_access_key[[:space:]"':=]+[A-Za-z0-9/+=]{40}
+GCP_API_KEY|high|AIza[0-9A-Za-z_-]{35}
+GCP_SERVICE_ACCOUNT|critical|"type"[[:space:]]*:[[:space:]]*"service_account"
+AZURE_STORAGE_KEY|critical|AccountKey=[A-Za-z0-9+/=]{50,}
+AZURE_SAS_TOKEN|high|sig=[A-Za-z0-9%+/=]{30,}&se=

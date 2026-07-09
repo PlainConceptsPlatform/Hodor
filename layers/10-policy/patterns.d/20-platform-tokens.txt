@@ -1,0 +1,9 @@
+# Format: NAME|SEVERITY|REGEX
+GITHUB_TOKEN|critical|gh[pousr]_[A-Za-z0-9]{36,}
+GITHUB_PAT|critical|github_pat_[A-Za-z0-9_]{60,}
+SLACK_TOKEN|high|xox[baprs]-[A-Za-z0-9-]{10,}
+SLACK_WEBHOOK|high|hooks\.slack\.com/services/T[A-Za-z0-9_/]+
+NPM_TOKEN|high|npm_[A-Za-z0-9]{36}
+STRIPE_SECRET_KEY|critical|[sr]k_live_[A-Za-z0-9]{20,}
+SENDGRID_API_KEY|high|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}
+TWILIO_API_KEY|high|SK[0-9a-f]{32}

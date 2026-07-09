@@ -1,0 +1,4 @@
+# Approved false positives (one substring per line; compared in lowercase).
+# Managed via PR to the company-ai-hooks repo.
+# Examples:
+# sk_live_DOCSAMPLE

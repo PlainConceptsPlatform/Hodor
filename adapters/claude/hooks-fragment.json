@@ -1,0 +1,49 @@
+{
+  "_comment": "Fragment to merge into managed-settings.json (production) or %USERPROFILE%\\.claude\\settings.json (local testing).",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\ProgramData\\PlainConcepts\\ai-hooks\\dispatch.ps1\" -Event UserPromptSubmit -Agent claude-code",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\ProgramData\\PlainConcepts\\ai-hooks\\dispatch.ps1\" -Event PreToolUse -Agent claude-code",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\ProgramData\\PlainConcepts\\ai-hooks\\dispatch.ps1\" -Event PreToolUse -Agent claude-code",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\ProgramData\\PlainConcepts\\ai-hooks\\dispatch.ps1\" -Event SessionEnd -Agent claude-code",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
