@@ -27,7 +27,7 @@ ai-hooks/
 ├── lib/                           # common, logrotate, otel (PS + bash)
 ├── layers/
 │   ├── 10-policy/                 # scan-prompt + patterns.d/*.txt (NAME|SEVERITY|REGEX)
-│   └── 30-skills/                 # skill-usage (namespace classification)
+│   └── 30-skills/                 # skill-usage: captures ALL skills & agents; tags Plain Concepts (pc- plugin) vs plugin vs personal
 ├── config/
 │   ├── settings.json              # OTel endpoint, log rotation, identity, policy.blockSeverity, skills.orgPluginPrefix
 │   └── allowlist.txt              # approved false positives
