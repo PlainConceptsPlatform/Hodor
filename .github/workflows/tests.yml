@@ -11,7 +11,7 @@ jobs:
     name: PowerShell suite (Windows)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0   # full history for the git-derived version tests
       - name: Run tests
@@ -22,7 +22,7 @@ jobs:
     name: Bash suite (Linux)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Run tests
