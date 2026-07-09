@@ -35,9 +35,12 @@ ai-hooks/
 │   ├── copilot/company-hooks.json # → ~/.copilot/hooks/ (VS Code + Copilot CLI)
 │   └── claude/hooks-fragment.json # → managed settings or ~/.claude/settings.json
 ├── tools/
-│   ├── test-payloads.ps1          # deterministic block/warn/skill tests
 │   ├── hodor-version.ps1 / .sh    # doctor: version + paths + hook wiring
 │   └── stamp-build-info.ps1       # computes build-info.json from git (shared: install + CI)
+├── tests/
+│   ├── cases/                     # shared fixtures (cmd, payload.json, expect, settings.json?)
+│   └── run.ps1 / run.sh           # dependency-free regression suite (both dispatchers)
+├── .github/workflows/tests.yml    # CI: runs the suite on push/PR (Windows + Linux)
 └── install-local.ps1              # local test installation (Windows)
 ```
 
@@ -74,16 +77,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install-local.ps1 -Dest "$
 
 It copies the scripts, installs `~/.copilot/hooks/company-hooks.json` (covers both VS Code and Copilot CLI) and adds the hooks to `~/.claude/settings.json` (with backup). Afterwards: enable `chat.useHooks` in VS Code (preview), fill in `identity.email` in `config/settings.json`, and confirm `policy.blockSeverity` and `skills.orgPluginPrefix`.
 
-## Quick test without an IDE
+## Tests (regression suite)
 
-Run the bundled script against your install (defaults to `%LOCALAPPDATA%\PlainConcepts\ai-hooks`):
+Dependency-free suite: shared fixtures in `tests/cases/` drive **both** dispatchers, so PowerShell and bash behavior stay in lock-step. Runs in isolation (temp log dir + temp settings via the `AIHOOKS_SETTINGS` override), so it never touches your real logs. Exits non-zero on any failure.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\test-payloads.ps1 `
-  -Dispatch "$env:LOCALAPPDATA\PlainConcepts\ai-hooks\dispatch.ps1"
+# Windows
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run.ps1
+```
+```bash
+# macOS / Linux / Git Bash
+bash tests/run.sh
 ```
 
-Or manually:
+Coverage: block-on-critical vs warn (and the `policy.blockSeverity` threshold), evidence redaction / no prompt leak, skill/agent classification by plugin namespace, payload normalization across the 3 agents, and the version command. CI runs both on every push/PR (`.github/workflows/tests.yml`). Add a regression test by dropping a new folder in `tests/cases/` (`cmd`, `payload.json`, `expect`, optional `settings.json`).
+
+## Quick manual check without an IDE
 
 ```powershell
 # CRITICAL -> BLOCKS: prints {"decision":"block",...} on stdout, the reason on stderr, exit code 2

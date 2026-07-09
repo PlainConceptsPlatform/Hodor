@@ -1,0 +1,4 @@
+exit 0
+stdout ~ systemMessage
+seclog ~ "event":"policy_warning"
+seclog ~ "action":"warn"

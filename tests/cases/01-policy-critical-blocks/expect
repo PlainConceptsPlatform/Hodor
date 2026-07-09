@@ -1,0 +1,10 @@
+exit 2
+stdout ~ "decision":"block"
+stdout ~ GITHUB_TOKEN
+stderr ~ BLOCK
+seclog ~ "event":"policy_block"
+seclog ~ "action":"block"
+seclog ~ "rule":"GITHUB_TOKEN"
+telemetry ~ pc.ai.policy_warning
+seclog !~ ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcd
+seclog !~ SECRETCTX

@@ -6,7 +6,8 @@ function Get-AiHooksRoot {
 
 function Get-AiHooksSettings {
     $root = Get-AiHooksRoot
-    $path = Join-Path $root 'config\settings.json'
+    # AIHOOKS_SETTINGS overrides the settings path (used by the test suite for isolation; unset in production).
+    $path = if ($env:AIHOOKS_SETTINGS -and (Test-Path $env:AIHOOKS_SETTINGS)) { $env:AIHOOKS_SETTINGS } else { Join-Path $root 'config\settings.json' }
     $s = Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
     if (-not $s.log.dir) {
         $s.log | Add-Member -NotePropertyName dir -NotePropertyValue '' -Force

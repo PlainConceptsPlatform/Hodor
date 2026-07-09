@@ -1,0 +1,4 @@
+exit 2
+stdout ~ "decision":"block"
+seclog ~ "event":"policy_block"
+seclog ~ "severity":"high"

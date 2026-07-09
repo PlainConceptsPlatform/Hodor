@@ -1,0 +1,29 @@
+name: tests
+
+# Regression suite for the Hodor hooks. Runs the same shared fixtures against both
+# dispatchers on their native OS. Independent of the (future) Intune packaging pipeline.
+on:
+  push:
+  pull_request:
+
+jobs:
+  powershell:
+    name: PowerShell suite (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for the git-derived version tests
+      - name: Run tests
+        shell: pwsh
+        run: ./tests/run.ps1
+
+  bash:
+    name: Bash suite (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run tests
+        run: bash tests/run.sh

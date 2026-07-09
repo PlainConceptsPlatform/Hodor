@@ -1,0 +1,9 @@
+# Keep line endings deterministic across Windows/macOS/Linux.
+* text=auto
+
+# Shell scripts and bash-parsed test fixtures MUST be LF (CRLF breaks bash).
+*.sh          text eol=lf
+tests/cases/** text eol=lf
+
+# PowerShell stays CRLF (Windows convention).
+*.ps1 text eol=crlf

@@ -2,12 +2,21 @@
 # lib/common.sh - shared functions (bash). Requires: grep, sed, awk; jq recommended.
 
 AIHOOKS_ROOT="${AIHOOKS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-SETTINGS_FILE="$AIHOOKS_ROOT/config/settings.json"
+# AIHOOKS_SETTINGS overrides the settings path (used by the test suite for isolation; unset in production).
+SETTINGS_FILE="${AIHOOKS_SETTINGS:-$AIHOOKS_ROOT/config/settings.json}"
 
 _setting() { # _setting <jq-path> <default>
+  local v key
   if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS_FILE" ]; then
-    local v
     v=$(jq -r "$1 // empty" "$SETTINGS_FILE" 2>/dev/null)
+    [ -n "$v" ] && { echo "$v"; return; }
+    echo "$2"; return
+  fi
+  # Fallback without jq: leaf keys are unique in the settings schema, so match by the last path segment.
+  if [ -f "$SETTINGS_FILE" ]; then
+    key="${1##*.}"
+    v="$(grep -oE "\"$key\"[[:space:]]*:[[:space:]]*(\"[^\"]*\"|[^,}[:space:]]+)" "$SETTINGS_FILE" 2>/dev/null \
+         | head -n1 | sed -E "s/.*:[[:space:]]*//; s/^\"//; s/\"$//")"
     [ -n "$v" ] && { echo "$v"; return; }
   fi
   echo "$2"

@@ -20,6 +20,23 @@ function Test-LuhnValid {
 
 if ([string]::IsNullOrWhiteSpace($Prompt)) { return @() }
 
+# patterns.d is authored for grep -E (POSIX). Translate POSIX character classes so the
+# same patterns also work in the .NET regex engine (which does not support [[:...:]]).
+function ConvertTo-DotNetRegex {
+    param([string]$Re)
+    $map = @{
+        '[:space:]'  = '\s'
+        '[:digit:]'  = '0-9'
+        '[:alnum:]'  = 'A-Za-z0-9'
+        '[:alpha:]'  = 'A-Za-z'
+        '[:upper:]'  = 'A-Z'
+        '[:lower:]'  = 'a-z'
+        '[:xdigit:]' = '0-9A-Fa-f'
+    }
+    foreach ($k in $map.Keys) { $Re = $Re.Replace($k, $map[$k]) }
+    return $Re
+}
+
 $placeholderRe = '(?i)(example|placeholder|your_|xxxx|changeme|todo|fixme|dummy|fake|test_key|sample|lorem)'
 
 $allow = @()
@@ -38,7 +55,7 @@ foreach ($file in $patternFiles) {
         if (-not $line -or $line.StartsWith('#')) { continue }
         $parts = $line.Split('|', 3)
         if ($parts.Count -lt 3) { continue }
-        $name = $parts[0]; $sev = $parts[1]; $re = $parts[2]
+        $name = $parts[0]; $sev = $parts[1]; $re = ConvertTo-DotNetRegex $parts[2]
         try {
             $found = [regex]::Matches($Prompt, $re, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
         } catch { continue }
