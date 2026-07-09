@@ -1,8 +1,8 @@
-# Hodor — Company AI Hooks
+# Hodor: Company AI Hooks
 
 Corporate hooks for VS Code (Copilot Chat), GitHub Copilot CLI and Claude Code.
 
-**Policy = block on critical**: a prompt with a **critical** finding (real secrets — AWS/GCP/Azure keys, GitHub/Stripe tokens, private keys, credit cards) is **blocked before reaching the model**. `high`/`medium` findings stay as a non-blocking **warning** (the request continues). The threshold is configurable via `policy.blockSeverity` (`critical` default · `high` · `none` = warn-only).
+**Policy = block on critical**: a prompt with a **critical** finding (real secrets: AWS/GCP/Azure keys, GitHub/Stripe tokens, private keys, credit cards) is **blocked before reaching the model**. `high`/`medium` findings stay as a non-blocking **warning** (the request continues). The threshold is configurable via `policy.blockSeverity` (`critical` default, `high`, or `none` = warn-only).
 
 Layers: `policy` (blocks/warns when the prompt violates the company AI policy), `usage` (skill/agent usage).
 Telemetry: 3 OTel events (`pc.ai.policy_warning`, `pc.ai.hook_issue`, `pc.ai.skill_usage`) → App Insights; without network/endpoint they are queued on disk and retried on `sessionEnd`.
@@ -15,7 +15,7 @@ Skill/agent telemetry covers **all** usage (not only Plain Concepts) and classif
 | `plugin` | any other plugin namespace | `anthropic-skills:docx` |
 | `personal` | no namespace (user/project/built-in skill) | `my-local-skill` |
 
-No maintained catalog is required — classification is derived from the name at runtime.
+No maintained catalog is required. Classification is derived from the name at runtime.
 
 ## Structure
 
@@ -47,12 +47,12 @@ ai-hooks/
 
 ## Versioning & checking the installed version
 
-The version updates **on every commit**, derived from git — no manual bumps:
+The version updates **on every commit**, derived from git, with no manual bumps:
 
 - `VERSION` holds only the base `MAJOR.MINOR` (e.g. `1.2`).
 - The **full version** is `MAJOR.MINOR.<commit-count>+g<short-sha>` (e.g. `1.2.42+gabc1234`); the patch is `git rev-list --count HEAD`, so it increments per commit.
 - `build-info.json` (git-ignored) is stamped at install/package time by `tools/stamp-build-info.ps1` and carries the resolved `version`, `commit`, `commitCount`, `buildDate`. At runtime the version resolves from `build-info.json` → live git (dev checkout) → fallback.
-- The full version is attached to **every** telemetry event (`pc.hooks_version`) and written into each `security.jsonl` record — so a report can be traced to exact code.
+- The full version is attached to **every** telemetry event (`pc.hooks_version`) and written into each `security.jsonl` record, so a report can be traced to exact code.
 
 When something misbehaves, run the **doctor**:
 
@@ -119,11 +119,11 @@ Coverage: block-on-critical vs warn (and the `policy.blockSeverity` threshold), 
 ```
 
 Logs (circular rotation, 5 MB × 3, configurable): `%LOCALAPPDATA%\PlainConcepts\ai-hooks\logs\`
-(`security.jsonl` — with `event: policy_block`/`policy_warning` and `action`; `hooks-error.jsonl`; `telemetry-queue.jsonl`).
+(`security.jsonl`, with `event: policy_block`/`policy_warning` and `action`; `hooks-error.jsonl`; `telemetry-queue.jsonl`).
 
 ## Telemetry dashboard
 
-The JSONL logs are hard to read by hand. `tools/dashboard.html` is a **static, offline** dashboard — no server, no dependencies, nothing leaves the page. Open it in a browser and **drag & drop** (or pick) `telemetry-queue.jsonl` (optionally also `security.jsonl` / `hooks-error.jsonl`):
+The JSONL logs are hard to read by hand. `tools/dashboard.html` is a **static, offline** dashboard: no server, no dependencies, nothing leaves the page. Open it in a browser and **drag & drop** (or pick) `telemetry-queue.jsonl` (optionally also `security.jsonl` / `hooks-error.jsonl`):
 
 ```
 start "" "%LOCALAPPDATA%\PlainConcepts\ai-hooks\tools\dashboard.html"
@@ -134,7 +134,7 @@ It shows: **policy findings grouped by severity** (critical/high/medium, with a 
 
 ### Confirming the real payload format (`HODOR_DEBUG`)
 
-The exact `tool_input` field of the Skill tool (and whether it carries the `plugin:` namespace) is not documented. To confirm what your client actually sends, set the env var and reproduce a real invocation — every raw payload is dumped to `logs\payloads-debug.jsonl`:
+The exact `tool_input` field of the Skill tool (and whether it carries the `plugin:` namespace) is not documented. To confirm what your client actually sends, set the env var and reproduce a real invocation. Every raw payload is dumped to `logs\payloads-debug.jsonl`:
 
 ```powershell
 $env:HODOR_DEBUG = "1"   # then restart Claude Code / VS Code and invoke a pc- skill or agent
