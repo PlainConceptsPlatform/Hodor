@@ -25,14 +25,33 @@ Write-Host "  otel       : $(if ($settings -and $settings.otel.endpoint) { 'conf
 
 # Hook wiring
 $claude = Join-Path $env:USERPROFILE '.claude\settings.json'
-$claudeOk = $false
+$claudeOk = $false; $claudeNote = 'missing'
 if (Test-Path $claude) {
     try {
         $c = Get-Content $claude -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($c.PSObject.Properties['hooks']) { $claudeOk = (($c.hooks | ConvertTo-Json -Depth 20) -match 'dispatch') }
-    } catch { }
+        $cmds = @()
+        if ($c.PSObject.Properties['hooks']) {
+            foreach ($ev in $c.hooks.PSObject.Properties.Name) {
+                foreach ($grp in @($c.hooks.$ev)) { foreach ($h in @($grp.hooks)) { if ($h.command) { $cmds += [string]$h.command } } }
+            }
+        }
+        $ours = @($cmds | Where-Object { $_ -match 'PlainConcepts\\ai-hooks\\dispatch\.ps1' })
+        if ($ours.Count -eq 0) {
+            $claudeNote = 'no Hodor hook found'
+        } else {
+            $path = $null
+            if ($ours[0] -match '-File\s+"([^"]+dispatch\.ps1)"') { $path = $matches[1] }
+            if ($path -and -not (Test-Path $path)) {
+                $claudeNote = "BROKEN: hook path does not exist -> $path"
+            } elseif ($path -and ((Split-Path -Parent $path) -ine $Root)) {
+                $claudeOk = $true; $claudeNote = "OK but points to a DIFFERENT install -> $path"
+            } else {
+                $claudeOk = $true; $claudeNote = 'OK (this install)'
+            }
+        }
+    } catch { $claudeNote = 'unreadable' }
 }
-Write-Host "  claude hook : $(if ($claudeOk) { 'OK' } else { 'missing' })  ($claude)"
+Write-Host "  claude hook : $claudeNote  ($claude)"
 $copilot = Join-Path $env:USERPROFILE '.copilot\hooks\company-hooks.json'
 $copilotOk = Test-Path $copilot
 Write-Host "  copilot hook: $(if ($copilotOk) { 'OK' } else { 'missing' })  ($copilot)"

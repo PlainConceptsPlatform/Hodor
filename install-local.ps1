@@ -46,19 +46,29 @@ $fragmentObj = $fragment | ConvertFrom-Json
 
 if (-not (Test-Path $claudeSettingsPath)) {
     if (-not (Test-Path $claudeDir)) { New-Item -ItemType Directory -Path $claudeDir -Force | Out-Null }
-    @{ hooks = $fragmentObj.hooks } | ConvertTo-Json -Depth 12 | Set-Content -Path $claudeSettingsPath -Encoding UTF8
+    [System.IO.File]::WriteAllText($claudeSettingsPath, (@{ hooks = $fragmentObj.hooks } | ConvertTo-Json -Depth 32), (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "[OK] Claude Code hooks created at $claudeSettingsPath"
 } else {
+    # Refresh our hooks so their paths always point to THIS install (fixes stale paths from an
+    # earlier install to a different folder). Non-Hodor hooks on the same events are preserved.
     $settings = Get-Content $claudeSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Copy-Item $claudeSettingsPath "$claudeSettingsPath.bak" -Force
     if (-not ($settings.PSObject.Properties['hooks'])) {
-        Copy-Item $claudeSettingsPath "$claudeSettingsPath.bak" -Force
-        $settings | Add-Member -NotePropertyName hooks -NotePropertyValue $fragmentObj.hooks
-        $settings | ConvertTo-Json -Depth 12 | Set-Content -Path $claudeSettingsPath -Encoding UTF8
-        Write-Host "[OK] Claude Code hooks added to $claudeSettingsPath (backup: .bak)"
-    } else {
-        Write-Host "[!] $claudeSettingsPath already contains a 'hooks' section. Merge manually the content of:"
-        Write-Host "    $Dest\adapters\claude\hooks-fragment.json"
+        $settings | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) -Force
     }
+    foreach ($ev in $fragmentObj.hooks.PSObject.Properties.Name) {
+        $kept = @()
+        if ($settings.hooks.PSObject.Properties[$ev]) {
+            foreach ($grp in @($settings.hooks.$ev)) {
+                $isOurs = $false
+                foreach ($h in @($grp.hooks)) { if ($h.command -and $h.command -match 'PlainConcepts\\ai-hooks\\dispatch\.ps1') { $isOurs = $true } }
+                if (-not $isOurs) { $kept += $grp }
+            }
+        }
+        $settings.hooks | Add-Member -NotePropertyName $ev -NotePropertyValue (@($kept) + @($fragmentObj.hooks.$ev)) -Force
+    }
+    [System.IO.File]::WriteAllText($claudeSettingsPath, ($settings | ConvertTo-Json -Depth 32), (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "[OK] Claude Code hooks point to $Dest (backup: .bak)"
 }
 
 # 5. Verify the install: doctor (version + wiring) then the regression suite

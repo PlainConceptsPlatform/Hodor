@@ -26,10 +26,18 @@ echo "  logs       : $LOG_DIR"
 if [ -n "$OTEL_ENDPOINT" ]; then echo "  otel       : configured"; else echo "  otel       : not set (queued to disk)"; fi
 
 claude="$HOME/.claude/settings.json"
-if [ -f "$claude" ] && grep -q dispatch "$claude" 2>/dev/null; then
-  echo "  claude hook : OK  ($claude)"
-else
+if [ ! -f "$claude" ]; then
   echo "  claude hook : missing  ($claude)"
+else
+  # Extract the dispatch path our hook points to and validate it exists / matches this install.
+  hookpath="$(grep -oE '\-File "[^"]*dispatch\.(ps1|sh)"' "$claude" 2>/dev/null | head -n1 | sed -E 's/.*-File "([^"]*)"/\1/')"
+  if [ -z "$hookpath" ]; then
+    echo "  claude hook : no Hodor hook found  ($claude)"
+  elif [ ! -e "$hookpath" ] && ! grep -q "$ROOT" <<<"$hookpath"; then
+    echo "  claude hook : points to '$hookpath' (may be a Windows path on this OS)  ($claude)"
+  else
+    echo "  claude hook : OK -> $hookpath  ($claude)"
+  fi
 fi
 copilot="$HOME/.copilot/hooks/company-hooks.json"
 if [ -f "$copilot" ]; then echo "  copilot hook: OK  ($copilot)"; else echo "  copilot hook: missing  ($copilot)"; fi
