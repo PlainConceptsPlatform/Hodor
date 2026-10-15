@@ -59,16 +59,28 @@ Copy-Item .env.example .env   # paste the connection string into .env
 docker compose -f docker-compose.yml -f docker-compose.appinsights.yml up -d
 ```
 
-Events land in the `traces` table (attributes in `customDimensions`), usually within 1-3 minutes:
+Usually within 1-3 minutes. Attributes are in `customDimensions` in both tables:
+
+- **`customEvents`**: `pc.ai.skill_usage`, `pc.ai.inventory`, `pc.ai.policy_warning`, `pc.ai.policy_block` (event name in `name`). The overlay's `transform/custom_events` processor tags them for the exporter and copies `service.version`, `os.type` and `host.name` into `customDimensions` (the custom-event path drops resource attributes and severity).
+- **`traces`**: `pc.ai.hook_issue`, `pc.ai.selftest` (event name in `message`, with severity and `cloud_RoleName`).
+
+```kusto
+customEvents
+| where timestamp > ago(1h)
+| where name startswith "pc.ai."
+| extend skill = tostring(customDimensions["pc.skill"]), plugin = tostring(customDimensions["pc.plugin"]),
+         kind = tostring(customDimensions["pc.kind"]), source = tostring(customDimensions["pc.source"]),
+         agent = tostring(customDimensions["pc.agent"]), user = tostring(customDimensions["pc.user_hash"]),
+         version = tostring(customDimensions["service.version"])
+| project timestamp, name, kind, plugin, skill, source, agent, user, version
+| order by timestamp desc
+```
 
 ```kusto
 traces
 | where timestamp > ago(1h)
-| where message startswith "pc.ai."
-| extend skill = tostring(customDimensions["pc.skill"]), plugin = tostring(customDimensions["pc.plugin"]),
-         kind = tostring(customDimensions["pc.kind"]), source = tostring(customDimensions["pc.source"]),
-         agent = tostring(customDimensions["pc.agent"]), user = tostring(customDimensions["pc.user_hash"])
-| project timestamp, message, kind, plugin, skill, source, agent, user
+| where message in ("pc.ai.hook_issue", "pc.ai.selftest")
+| project timestamp, message, severityLevel, customDimensions
 | order by timestamp desc
 ```
 

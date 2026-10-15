@@ -42,7 +42,7 @@ Two independent tracks: **Azure** (the place telemetry goes) and **distribution*
 | 12 | Claude Code managed settings with the hooks | Intune | [todo] |
 | 13 | VS Code `ChatHooks` policy | Intune (Settings Catalog / ADMX) | [todo] |
 | 14 | Remediation script (drift repair) | Intune | [todo] |
-| 15 | App Insights mapping, KQL queries, workbook | Azure | [todo] (tasks C4, C5) |
+| 15 | KQL queries, workbook | Azure | [todo] (task C5; table mapping C4 is [ready]) |
 
 ## 3. Azure
 
@@ -62,7 +62,7 @@ Decide before creating:
 
 - **Retention** of the workspace (default 30 days). Usage trends need longer; set it on the workspace or on the `AppTraces` table.
 - **Daily cap** on the workspace as a safety net against a runaway client.
-- Events currently land in `traces` (`customDimensions` holds the `pc.*` attributes). Whether to move them to `customEvents` is task C4; decide before building dashboards.
+- Tables (task C4): `skill_usage`, `inventory`, `policy_warning`, `policy_block` land in **`customEvents`**; `hook_issue` and `selftest` in **`traces`**. The `pc.*` attributes are in `customDimensions` in both. Retention and cost apply to `AppEvents` and `AppTraces` in the workspace.
 
 ### 3.2 Key Vault
 
@@ -84,13 +84,13 @@ Resources:
 
 - Container Apps environment `cae-ai-hooks` (logs to `law-ai-hooks`).
 - Container App `ca-otel-collector`:
-  - Image `otel/opentelemetry-collector-contrib:0.120.0` (pinned, same as local).
+  - Image `otel/opentelemetry-collector-contrib:0.130.0` (pinned, same as local; `custom_events_enabled` needs ≥ 0.125).
   - Ingress **external**, HTTPS only, target port `4318`. TLS is terminated by Container Apps; the collector itself listens on plain HTTP.
   - Health probe: HTTP `GET :13133/`.
   - Scale: min 1, max 3 replicas (1 is plenty; the clients batch 200 records per request and retry on their own).
   - Secrets from Key Vault: `APPLICATIONINSIGHTS_CONNECTION_STRING`, `HODOR_INGEST_TOKEN`.
 
-Production collector config (only the azuremonitor exporter; no `debug`, `file` or Aspire). It is the local base + auth + App Insights overlays merged:
+Production collector config (only the azuremonitor exporter; no `debug`, `file` or Aspire). It is the local base + auth + App Insights overlays merged. The `transform/custom_events` processor routes business events to `customEvents` and copies the resource attributes that the exporter drops on that path (see `infra/local/otel-collector.appinsights.yaml`):
 
 ```yaml
 extensions:
@@ -114,17 +114,29 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 20
   batch: {}
+  transform/custom_events:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        conditions:
+          - IsMatch(log.body, "^pc\\.ai\\.(skill_usage|inventory|policy_warning|policy_block)$")
+        statements:
+          - set(log.attributes["microsoft.custom_event.name"], log.body)
+          - set(log.attributes["service.version"], resource.attributes["service.version"])
+          - set(log.attributes["os.type"], resource.attributes["os.type"])
+          - set(log.attributes["host.name"], resource.attributes["host.name"])
 
 exporters:
   azuremonitor:
     connection_string: ${env:APPLICATIONINSIGHTS_CONNECTION_STRING}
+    custom_events_enabled: true
 
 service:
   extensions: [health_check, bearertokenauth]
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, transform/custom_events, batch]
       exporters: [azuremonitor]
 ```
 
@@ -266,5 +278,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\PlainConcepts
 - [ ] Who owns Claude Code managed settings in the organization (§5.3).
 - [ ] Multiple-token rotation in `bearertokenauth` (§3.4).
 - [ ] Retention and daily cap of the workspace (§3.1).
-- [ ] `traces` vs `customEvents` (task C4) before building dashboards.
 - [ ] GitHub enterprise-managed plugins as a replacement for the per-user Copilot step (§5.2).

@@ -66,6 +66,14 @@ split_emit() { # split_emit <name> <kind> <via> <require-found> - "plugin:rest" 
 
 [ -n "$DIRECT_NAME" ] && split_emit "$DIRECT_NAME" "$DIRECT_KIND" tool 0
 
+# Copilot CLI expands "/plugin:skill args" before the hook runs: the prompt becomes a fixed preamble followed by
+# the whole SKILL.md. Count only the named skill; the embedded skill text may mention other /plugin:name tokens.
+copilot_skill="$(printf '%s' "$PROMPT" | head -n1 | sed -nE 's#^[[:space:]]*The user explicitly invoked the "/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})" skill\..*$#\1#p')"
+if [ -n "$copilot_skill" ]; then
+  split_emit "$copilot_skill" skill prompt 0
+  PROMPT=""
+fi
+
 if [ -n "$PROMPT" ]; then
   # Namespaced tokens (/plugin:name, /plugin:group:name) are reliable invocations without a catalog.
   while IFS= read -r tok; do

@@ -2,7 +2,7 @@
 
 Goal: reliable skill / agent / command usage telemetry (per project and user) → OTel Collector → Application Insights. Local-first: infra runs with docker compose (`infra/local/`); production deployment (Azure + Intune) in `docs/deployment.md`.
 
-Done: C0, A1–A4, A6–A8, E1 (phases 1–2); B1–B7, D2–D4, E4 (phase 3, 2026-10-14). Next: A5, C4/C5 (App Insights mapping + KQL), D1, E2/E3.
+Done: C0, A1–A4, A6–A8, E1 (phases 1–2); B1–B7, D2–D4, E4 (phase 3, 2026-10-14); C4 (2026-10-15). Next: C5 (KQL), D1, E2/E3.
 
 Pending decisions (implemented as settings; defaults below until decided):
 - [ ] **Project**: repo name in clear text or hashed? → `telemetry.projectMode` (`name` default | `hash`).
@@ -17,7 +17,7 @@ Pending decisions (implemented as settings; defaults below until decided):
 - [x] `infra/local/otel-collector.appinsights.yaml` + `docker-compose.appinsights.yml`: optional overlay that adds the `azuremonitor` exporter (dev App Insights connection string in `.env`).
 - [x] `infra/local/smoke.ps1`: sends events with the current dispatcher (isolated settings) and checks they reach the collector.
 - [x] Validate end to end on a developer machine (2026-10-01: smoke OK — direct send, offline queue + SessionEnd flush, all events in the file exporter). Confirms B2: every record arrives as `SeverityText: WARN` with no `severityNumber`.
-- [ ] Validate the App Insights overlay against a real dev App Insights (`traces` table).
+- [ ] Validate the App Insights overlay against a real dev App Insights (`customEvents` + `traces`, see C4). Verified so far only against a fake ingestion endpoint.
 
 ## A — Correct capture (hook) — Phase 1, implemented 2026-10-14
 
@@ -27,6 +27,7 @@ Pending decisions (implemented as settings; defaults below until decided):
 - [x] **A3. Project and session context** — `pc.project` (git origin of payload `cwd` → `org/repo`, fallback folder name, `unknown`), `pc.session_id`. Setting `telemetry.projectMode`. Case 21.
 - [x] **A4. User identity** — `identity.mode`: `hash` (default, only `pc.user_hash`) | `email` (also `pc.user`: `identity.email` → `git config user.email` → `USERNAME@local`). Cases 19–20.
 - [x] **A5. Copilot payloads** — `toolArgs` as a JSON string is parsed; `cwd` / `sessionId` normalized (case 22). Confirmed live (2026-10-14): Copilot CLI calls the agent tool with the agent FILE name (`risks-analyzer`) while Claude Code uses the frontmatter name (`pc.presales.risks-analyzer`); `pc.skill` is now canonical (frontmatter name) and `pc.skill_raw` keeps the invoked name (case 30).
+  - Fixed 2026-10-15: Copilot CLI expands `/plugin:skill args` before `userPromptSubmitted`, so the hook gets `The user explicitly invoked the "/plugin:skill" skill. ...` + the whole SKILL.md (and no `preToolUse`, the skill is injected directly). The `(^|\s)/plugin:name` scan missed it (quote before the slash). The usage layer now recognizes that preamble, counts only the named skill and skips the embedded skill text, which may mention other `/plugin:name` tokens (case 31).
   - Fixed 2026-10-14: `install-local.ps1` wrote `~/.copilot/hooks/company-hooks.json` with a UTF-8 BOM (`Set-Content -Encoding UTF8` in Windows PowerShell), so Copilot CLI rejected the whole file ("Invalid JSON: expected value at line 1 column 1") and **no Copilot hook ever ran** on Windows. Now written without BOM; `tests/run.ps1` runs the real installer (isolated `USERPROFILE`/`LOCALAPPDATA`) and checks every JSON it writes (no BOM, valid, wired to the install).
 - [x] **A6. Dedupe** — a `/plugin:skill` prompt followed by the Skill tool call (or a repeated hook) counted twice. Same session + plugin + skill inside `telemetry.dedupeSeconds` (120 s) = 1 use. State: `logs/state-dedupe.*`.
 - [x] **A7. Enrichment** — every `skill_usage` carries `pc.via` (`tool` | `prompt` | `file_read`), `pc.plugin_version`, `pc.marketplace` (the calling client's install first: Claude Code and Copilot may have different versions).
@@ -57,7 +58,7 @@ Pending decisions (implemented as settings; defaults below until decided):
 
 ## C — Collector / App Insights (beyond C0)
 
-- [ ] **C4. App Insights mapping** — verify whether records land in `traces` (attributes in `customDimensions`) or `customEvents` (`microsoft.custom_event.name` attribute). Pick one and document.
+- [x] **C4. App Insights mapping** (2026-10-15) — business events (`skill_usage`, `inventory`, `policy_warning`, `policy_block`) → `customEvents`; diagnostics (`hook_issue`, `selftest`) stay in `traces` (severity matters there). Done in the collector only, hooks unchanged: `transform/custom_events` sets `microsoft.custom_event.name` = body and copies `service.version`, `os.type`, `host.name` into the record (the exporter's custom-event path drops resource attributes and severity); `azuremonitor.custom_events_enabled: true` (needs collector ≥ 0.125; image bumped 0.120.0 → 0.130.0). Separate `logs/appinsights` pipeline, so the local file / Aspire are unchanged. Verified with a fake ingestion endpoint: 4 × `EventData` with the copied attributes, 2 × `MessageData` with severity; base smoke OK on 0.130.0. Note: custom events carry no `user_Id`/`session_Id`, so the App Insights Users/Funnels blades do not apply; use KQL on `pc.user_hash`.
 - [ ] **C5. KQL queries** — `infra/queries/*.kql`: usage by skill/agent/command, by project, by user, policy findings by rule, hook issues by version.
 - [ ] **C6. Privacy processor** — `attributes`/`transform` processor in the collector (e.g. drop `pc.evidence` if decided).
 

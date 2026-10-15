@@ -61,6 +61,14 @@ if (-not [string]::IsNullOrWhiteSpace($SkillName)) {
     $sp = Split-UsageName $SkillName
     $candidates += [pscustomobject]@{ plugin = $sp[0]; bare = $sp[1]; kind = $Kind; via = 'tool'; requireFound = $false }
 }
+# Copilot CLI expands "/plugin:skill args" before the hook runs: the prompt becomes a fixed preamble followed by
+# the whole SKILL.md. Count only the named skill; the embedded skill text may mention other /plugin:name tokens.
+$cm = [regex]::Match([string]$Prompt, '^\s*The user explicitly invoked the "/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})" skill\.')
+if ($cm.Success) {
+    $sp = Split-UsageName $cm.Groups[1].Value
+    $candidates += [pscustomobject]@{ plugin = $sp[0]; bare = $sp[1]; kind = 'skill'; via = 'prompt'; requireFound = $false }
+    $Prompt = ''
+}
 if (-not [string]::IsNullOrWhiteSpace($Prompt)) {
     # Namespaced tokens (/plugin:name, /plugin:group:name) are reliable invocations without a catalog.
     foreach ($m in [regex]::Matches($Prompt, '(^|\s)/([A-Za-z0-9][A-Za-z0-9._-]{0,63}(?::[A-Za-z0-9][A-Za-z0-9._-]{0,63})+)')) {
