@@ -1,6 +1,6 @@
 # Hodor: tasks backlog (telemetry operability)
 
-Goal: reliable skill / agent / command usage telemetry (per project and user) → OTel Collector → Application Insights. Local-first: infra runs with docker compose (`infra/local/`); cloud deployment is handled separately.
+Goal: reliable skill / agent / command usage telemetry (per project and user) → OTel Collector → Application Insights. Local-first: infra runs with docker compose (`infra/local/`); production deployment (Azure + Intune) in `docs/deployment.md`.
 
 Done: C0, A1–A4, A6–A8, E1 (phases 1–2); B1–B7, D2–D4, E4 (phase 3, 2026-10-14). Next: A5, C4/C5 (App Insights mapping + KQL), D1, E2/E3.
 

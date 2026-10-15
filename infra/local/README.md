@@ -1,6 +1,6 @@
 # Local telemetry stack
 
-Runs the OTel Collector on your machine so the **current** hooks can be tested end to end, without cloud infra. Cloud deployment is handled separately.
+Runs the OTel Collector on your machine so the **current** hooks can be tested end to end, without cloud infra. Production (Azure + Intune): see [`docs/deployment.md`](../../docs/deployment.md).
 
 ```
 hook (dispatch.ps1/.sh) --OTLP/HTTP JSON--> otel-collector :4318 --> debug (docker logs)
