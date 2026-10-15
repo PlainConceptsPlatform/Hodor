@@ -104,6 +104,15 @@ Open the offline dashboard and drag your log file onto it:
 start "" "%LOCALAPPDATA%\PlainConcepts\ai-hooks\tools\dashboard.html"
 ```
 
-Drag `logs\telemetry-queue.jsonl` (and `logs\security.jsonl` for findings with severity and block/warn). You will see policy findings grouped by severity and skills/agents ranked by usage.
+Drag `logs\security.jsonl` (findings with severity and block/warn) and, with a local collector, `infra\local\data\telemetry.jsonl` (everything that was sent: usage, inventory, policy). `logs\telemetry-queue.jsonl` only exists while events are waiting to be sent. You will see policy findings grouped by severity, skills/agents/commands ranked by usage and the installed plugins.
 
 If a critical prompt does **not** block in your Claude Code surface, note what you see: it would mean that surface treats `UserPromptSubmit` as advisory (like VS Code / Forge), which is a known platform limitation.
+
+## 6. Telemetry end to end (collector → Aspire / App Insights)
+
+1. Start the local stack: `docker compose up -d` in `infra\local` (`infra\local\smoke.ps1` automates steps 2 and 5).
+2. `powershell -NoProfile -File <install>\dispatch.ps1 -Event selftest` → `"ok":true` and a `pc.ai.selftest` record in Aspire (http://localhost:18888 → Structured logs).
+3. Restart Claude Code: a few seconds later the `pc.ai.inventory` records appear (sent by the background worker; the session start is not delayed).
+4. Run block 5: `pc.ai.skill_usage` arrives with severity `Information`; a block-1 prompt produces `pc.ai.policy_block` (`Error`), blocks 2–3 `pc.ai.policy_warning` (`Warning`).
+5. Offline: `docker compose stop otel-collector`, use a skill → the prompt is not slower and `logs\telemetry-queue*.jsonl` grows. `docker compose start otel-collector`, then send another prompt (or use any hook after `otel.retryMinutes`) → the queue disappears and the events show up with their original time.
+6. With auth (`docker-compose.auth.yml`): `selftest` with a wrong or missing token → `"status":401`; reinstall with `-OtelToken <token>` → `"ok":true`.

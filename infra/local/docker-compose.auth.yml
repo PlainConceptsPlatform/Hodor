@@ -1,0 +1,11 @@
+# Overlay: bearer-token auth on the collector (needs HODOR_INGEST_TOKEN in infra/local/.env).
+#   docker compose -f docker-compose.yml -f docker-compose.auth.yml up -d
+# Hooks: install-local.ps1 -OtelToken <same token>; check with: dispatch.ps1 -Event selftest
+# Combined with the App Insights overlay, pass all three --config files in one 'command' (overlays replace it).
+services:
+  otel-collector:
+    command: ["--config=/etc/otelcol/config.yaml", "--config=/etc/otelcol/auth.yaml"]
+    volumes:
+      - ./otel-collector.auth.yaml:/etc/otelcol/auth.yaml:ro
+    environment:
+      HODOR_INGEST_TOKEN: ${HODOR_INGEST_TOKEN:?set it in infra/local/.env}

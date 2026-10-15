@@ -1,0 +1,10 @@
+# Overlay merged on top of otel-collector.yaml: adds the Azure Monitor (App Insights) exporter.
+# Log records land in the App Insights `traces` table; attributes go to customDimensions.
+exporters:
+  azuremonitor:
+    connection_string: ${env:APPLICATIONINSIGHTS_CONNECTION_STRING}
+
+service:
+  pipelines:
+    logs:
+      exporters: [debug, file, otlp/aspire, azuremonitor]

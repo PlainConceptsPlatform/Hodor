@@ -88,6 +88,7 @@
   .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 500; border: 1px solid transparent; }
   .pill.skill, .pill.plainconcepts { color: var(--brand); background: var(--brand-soft); border-color: var(--brand-border); }
   .pill.agent { color: var(--violet); background: var(--violet-soft); }
+  .pill.command { color: var(--info); background: var(--info-soft); border-color: var(--info-border); }
   .pill.plugin { color: var(--info); background: var(--info-soft); border-color: var(--info-border); }
   .pill.personal, .pill.external, .pill.unknown { color: var(--fg-muted); background: var(--bg-muted); }
   .pill.s-critical { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-border); }
@@ -159,13 +160,33 @@ function normalizeRecord(o) {
   const g = k => (attrs[k] !== undefined ? attrs[k] : null);
   const type = name.indexOf("policy") >= 0 ? "policy"
              : name.indexOf("skill_usage") >= 0 ? "skill"
+             : name.indexOf("inventory") >= 0 ? "inventory"
              : name.indexOf("hook_issue") >= 0 ? "error" : null;
   if (!type) return null;
-  const ts = o.ts || (o.timeUnixNano ? new Date(Number(o.timeUnixNano) / 1e6).toISOString() : null);
-  return { origin: "otel", type, ts,
+  const ts = o.ts || (o.timeUnixNano && Number(o.timeUnixNano) > 1e12 ? new Date(Number(o.timeUnixNano) / 1e6).toISOString() : null);
+  const ev = { origin: "otel", type, ts,
     rule: g("pc.rule"), severity: lc(g("pc.severity")), action: g("pc.action"),
     agent: g("pc.agent"), error: g("pc.error"), version: g("pc.hooks_version"),
     skill: g("pc.skill"), plugin: g("pc.plugin"), source: g("pc.source"), kind: g("pc.kind") };
+  if (type === "inventory") {
+    Object.assign(ev, { user: g("pc.user") || g("pc.user_hash") || "?", client: g("pc.client"), snapshot: g("pc.inventory_id"),
+      pluginVersion: g("pc.plugin_version"), marketplace: g("pc.marketplace"), enabled: g("pc.enabled"), installOk: g("pc.install_ok"),
+      skills: Number(g("pc.skills_count") || 0), agentsN: Number(g("pc.agents_count") || 0), commands: Number(g("pc.commands_count") || 0) });
+  }
+  return ev;
+}
+// One JSON line -> events. Accepts single records (local queue / logs) and OTLP envelopes
+// ({"resourceLogs":[...]} lines, e.g. the collector file exporter: infra/local/data/telemetry.jsonl).
+function normalizeLine(o) {
+  if (o && Array.isArray(o.resourceLogs)) {
+    const out = [];
+    for (const rl of o.resourceLogs) for (const sl of (rl.scopeLogs || [])) for (const r of (sl.logRecords || [])) {
+      const ev = normalizeRecord(r); if (ev) out.push(ev);
+    }
+    return out;
+  }
+  const ev = normalizeRecord(o);
+  return ev ? [ev] : [];
 }
 function lc(v) { return v ? String(v).toLowerCase() : null; }
 
@@ -177,8 +198,8 @@ function parseLines(text) {
     line = line.replace(/^﻿/, "").trim();
     if (!line) continue;
     let o; try { o = JSON.parse(line); } catch (_) { skipped++; continue; }
-    const ev = normalizeRecord(o);
-    if (ev) events.push(ev); else skipped++;
+    const evs = normalizeLine(o);
+    if (evs.length) { for (const ev of evs) events.push(ev); } else skipped++;
   }
   return { events, total: lines.length, skipped };
 }
@@ -195,8 +216,8 @@ async function parseLinesBatched(text, onProgress) {
       line = line.replace(/^﻿/, "").trim();
       if (!line) continue;
       let o; try { o = JSON.parse(line); } catch (_) { skipped++; continue; }
-      const ev = normalizeRecord(o);
-      if (ev) events.push(ev); else skipped++;
+      const evs = normalizeLine(o);
+      if (evs.length) { for (const ev of evs) events.push(ev); } else skipped++;
     }
     if (onProgress) onProgress(end / N);
     await new Promise(r => setTimeout(r, 0));
@@ -248,6 +269,28 @@ function aggregate(events) {
     const [msg, agent] = k.split(" "); return { error: msg, agent, count: c };
   }).sort((a, b) => b.count - a.count);
 
+  // Inventory: latest snapshot per user+client, then one row per plugin+client (users, versions in the field)
+  const latest = {};
+  events.filter(e => e.type === "inventory").forEach(e => {
+    const k = e.user + "|" + (e.client || "");
+    const t = e.ts ? Date.parse(e.ts) : 0;
+    if (!latest[k] || t > latest[k].t) latest[k] = { t, snapshot: e.snapshot, recs: [] };
+    if (latest[k].snapshot === e.snapshot) latest[k].recs.push(e);
+  });
+  const invMap = {}; const invUsers = new Set();
+  Object.values(latest).forEach(l => l.recs.forEach(e => {
+    invUsers.add(e.user);
+    const plugin = e.plugin || "(personal)";
+    const key = plugin + "|" + (e.client || "");
+    const r = invMap[key] || (invMap[key] = { plugin, client: e.client || "", source: e.source || "unknown",
+      users: new Set(), versions: new Set(), skills: 0, agents: 0, commands: 0, broken: 0 });
+    r.users.add(e.user);
+    if (e.pluginVersion) r.versions.add(e.pluginVersion);
+    r.skills = Math.max(r.skills, e.skills); r.agents = Math.max(r.agents, e.agentsN); r.commands = Math.max(r.commands, e.commands);
+    if (e.installOk === "false") r.broken++;
+  }));
+  const invRows = Object.values(invMap).sort((a, b) => b.users.size - a.users.size || a.plugin.localeCompare(b.plugin));
+
   const all = policy.concat(skills, errors);
   // Compute min/max with a loop (Math.min(...arr) overflows the stack on large files).
   let tMin = Infinity, tMax = -Infinity, haveTime = false;
@@ -259,7 +302,8 @@ function aggregate(events) {
   return {
     total: all.length, policyCount: policy.length, skillCount: skills.length, errorCount: errors.length,
     range: haveTime ? { min: new Date(tMin), max: new Date(tMax) } : null,
-    agents: [...agentSet], sev, rules, action, skillRows, bySource, byKind, errRows
+    agents: [...agentSet], sev, rules, action, skillRows, bySource, byKind, errRows,
+    invRows, invUsers: invUsers.size
   };
 }
 
@@ -276,7 +320,7 @@ function render(input, meta) {
 
 function paint(a, meta) {
   const c = document.getElementById("content");
-  if (a.total === 0) {
+  if (a.total === 0 && a.invRows.length === 0) {
     c.innerHTML = '<div class="empty">No recognizable telemetry in the loaded file(s).</div>';
     return;
   }
@@ -293,7 +337,7 @@ function paint(a, meta) {
     <tr>
       <td class="barcell"><span class="b" style="width:${(s.count / skillMax * 100).toFixed(1)}%"></span>
         <span class="t"><strong>${esc(s.name)}</strong></span></td>
-      <td><span class="pill ${s.kind === "agent" ? "agent" : "skill"}">${esc(s.kind)}</span></td>
+      <td><span class="pill ${s.kind === "agent" || s.kind === "command" ? s.kind : "skill"}">${esc(s.kind)}</span></td>
       <td>${s.plugin ? esc(s.plugin) : ""}</td>
       <td><span class="pill ${esc(s.source)}">${esc(s.source)}</span></td>
       <td class="num">${s.count}</td>
@@ -344,6 +388,24 @@ function paint(a, meta) {
       <div class="tblwrap"><table>
         <thead><tr><th>Name</th><th>Type</th><th>Plugin</th><th>Source</th><th class="num">Uses</th></tr></thead>
         <tbody>${skillRowsHtml}</tbody></table></div>
+    </section>`;
+  }
+
+  // Inventory panel
+  if (a.invRows.length > 0) {
+    const invRowsHtml = a.invRows.map(r => `
+      <tr>
+        <td><strong>${esc(r.plugin)}</strong>${r.broken ? ` <span class="muted">(${r.broken} broken install)</span>` : ""}</td>
+        <td>${esc(r.client)}</td>
+        <td><span class="pill ${esc(r.source)}">${esc(r.source)}</span></td>
+        <td>${esc([...r.versions].sort().join(", "))}</td>
+        <td class="num">${r.skills}</td><td class="num">${r.agents}</td><td class="num">${r.commands}</td>
+        <td class="num">${r.users.size}</td>
+      </tr>`).join("");
+    html += `<section class="panel"><h2>Installed (latest inventory per user) <span class="count">${a.invRows.length} plugins, ${a.invUsers} user(s)</span></h2>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Plugin</th><th>Client</th><th>Source</th><th>Versions</th><th class="num">Skills</th><th class="num">Agents</th><th class="num">Commands</th><th class="num">Users</th></tr></thead>
+        <tbody>${invRowsHtml}</tbody></table></div>
     </section>`;
   }
 

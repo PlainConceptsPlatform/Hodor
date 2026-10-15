@@ -1,0 +1,39 @@
+# Local collector: OTLP/HTTP in -> console (debug) + file + Aspire Dashboard.
+# The App Insights exporter is added by otel-collector.appinsights.yaml (overlay).
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318   # current hooks send OTLP JSON to /v1/logs without auth (see tasks B5)
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  batch:
+    timeout: 2s
+
+exporters:
+  debug:
+    verbosity: detailed
+  file:
+    path: /data/telemetry.jsonl
+    rotation:
+      max_megabytes: 10
+      max_backups: 3
+  otlp/aspire:
+    endpoint: aspire-dashboard:18889
+    tls:
+      insecure: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug, file, otlp/aspire]

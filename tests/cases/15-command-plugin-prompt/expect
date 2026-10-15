@@ -1,0 +1,6 @@
+exit 0
+telemetry ~ pc.ai.skill_usage
+telemetry ~ deck:create
+telemetry ~ command
+telemetry ~ 1.4.0
+telemetry ~ demo-market

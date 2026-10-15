@@ -3,3 +3,8 @@ build-info.json
 
 # Local runtime logs (if ever produced inside the repo tree)
 logs/
+
+# Local telemetry stack (infra/local)
+infra/local/.env
+infra/local/data/*
+!infra/local/data/.gitkeep

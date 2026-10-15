@@ -1,0 +1,28 @@
+# Local telemetry stack for Hodor: OTel Collector + Aspire Dashboard (local UI).
+#   docker compose up -d
+# With a dev Application Insights as well (needs APPLICATIONINSIGHTS_CONNECTION_STRING in .env):
+#   docker compose -f docker-compose.yml -f docker-compose.appinsights.yml up -d
+# Hooks endpoint (config/settings.json -> otel.endpoint): http://localhost:4318
+name: hodor-telemetry
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - ./data:/data
+    ports:
+      - "127.0.0.1:4318:4318"     # OTLP/HTTP (what the hooks send to)
+      - "127.0.0.1:13133:13133"   # health check
+    depends_on:
+      - aspire-dashboard
+    restart: unless-stopped
+
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - "127.0.0.1:18888:18888"   # UI -> http://localhost:18888 (Structured logs)
+    restart: unless-stopped

@@ -32,6 +32,25 @@ OTEL_QUEUE_MAX_MB="$(_setting '.otel.queueMaxSizeMB' 2)"
 SUPPORT_CHANNEL="$(_setting '.support.channel' '#ai-hooks (Teams)')"
 POLICY_BLOCK_SEVERITY="$(_setting '.policy.blockSeverity' 'critical')"
 ORG_PLUGIN_PREFIX="$(_setting '.skills.orgPluginPrefix' 'pc-')"
+IDENTITY_MODE="$(_setting '.identity.mode' 'hash')"            # hash | email (email also sends pc.user)
+PROJECT_MODE="$(_setting '.telemetry.projectMode' 'name')"     # name | hash
+DEDUPE_SECONDS="$(_setting '.telemetry.dedupeSeconds' 120)"     # same skill, same session, within N s = 1 use (0 = off)
+TRACK_FILE_READS="$(_setting '.usage.trackFileReads' false)"   # heuristic: skills/agents loaded by reading their .md
+if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS_FILE" ]; then
+  # 'enabled' is not a unique leaf key, so the no-jq fallback cannot read it (inventory needs jq anyway)
+  INVENTORY_ENABLED="$(jq -r 'if .inventory.enabled == false then "false" else "true" end' "$SETTINGS_FILE" 2>/dev/null)"
+else
+  INVENTORY_ENABLED="true"
+fi
+INVENTORY_INTERVAL_HOURS="$(_setting '.inventory.intervalHours' 24)"
+if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS_FILE" ]; then
+  # jq's '//' treats false as missing, so read the boolean explicitly
+  OTEL_BACKGROUND="$(jq -r 'if .otel.background == false then "false" else "true" end' "$SETTINGS_FILE" 2>/dev/null)"
+else
+  OTEL_BACKGROUND="$(_setting '.otel.background' true)"   # queue only + detached flush worker
+fi
+OTEL_BATCH_SIZE="$(_setting '.otel.flushBatchSize' 200)"       # records per OTLP request when flushing the queue
+OTEL_RETRY_MINUTES="$(_setting '.otel.retryMinutes' 5)"        # an idle queue is retried at most every N minutes
 
 severity_rank() { # severity_rank <severity> -> numeric rank
   case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
@@ -70,17 +89,73 @@ redact() { # redact <text>
   if [ "${#t}" -le 12 ]; then echo '[REDACTED]'; else echo "${t:0:4}...${t: -4}"; fi
 }
 
+short_hash() { # short_hash <text> -> first 16 hex chars of sha256
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | cut -c1-16
+  else
+    printf '%s' "$1" | shasum -a 256 | cut -c1-16
+  fi
+}
+
 user_hash() {
-  local email salt raw
+  local email salt
   email="$(_setting '.identity.email' '')"
   [ -z "$email" ] && email="${USER:-unknown}@local"
   salt="$(_setting '.identity.salt' 'CHANGE-ME-IT-SALT')"
-  raw="${email}${salt}"
-  if command -v sha256sum >/dev/null 2>&1; then
-    printf '%s' "$raw" | sha256sum | cut -c1-16
-  else
-    printf '%s' "$raw" | shasum -a 256 | cut -c1-16
+  short_hash "${email}${salt}"
+}
+
+user_email() { # clear-text identity (identity.mode = email): settings -> git user.email -> USER@local
+  local email
+  email="$(_setting '.identity.email' '')"
+  [ -z "$email" ] && email="$(git config --global user.email 2>/dev/null)"
+  [ -z "$email" ] && email="${USER:-unknown}@local"
+  printf '%s' "$email" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]'
+}
+
+repo_name() { # repo_name <git-url> -> org/repo (GitHub) or project/repo (Azure DevOps)
+  local u="${1%.git}"
+  u="$(printf '%s' "$u" | sed -E 's#^[^@/]+@([^:/]+):#\1/#')"
+  printf '%s' "$u" | tr '\\' '/' | tr '/' '\n' | grep -v -e '^$' -e '^_git$' | tail -n 2 | paste -sd/ -
+}
+
+project_name() { # project_name <cwd> -> git origin -> folder name -> unknown (hashed if projectMode=hash)
+  local cwd="${1:-$PWD}" name="" url
+  if [ -d "$cwd" ]; then
+    url="$(git -C "$cwd" remote get-url origin 2>/dev/null)"
+    [ -n "$url" ] && name="$(repo_name "$url")"
   fi
+  if [ -z "$name" ]; then
+    cwd="$(printf '%s' "$cwd" | tr '\\' '/')"; cwd="${cwd%/}"
+    name="${cwd##*/}"
+  fi
+  [ -z "$name" ] && { printf 'unknown'; return; }
+  if [ "$PROJECT_MODE" = "hash" ]; then
+    short_hash "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')$(_setting '.identity.salt' 'CHANGE-ME-IT-SALT')"
+  else
+    printf '%s' "$name"
+  fi
+}
+
+usage_duplicate() { # usage_duplicate <key> -> exit 0 if already counted within DEDUPE_SECONDS (else records it)
+  local key now path tmp ts k dup=1
+  [ "${DEDUPE_SECONDS:-0}" -gt 0 ] 2>/dev/null || return 1
+  key="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')"
+  now="$(date +%s)"
+  mkdir -p "$LOG_DIR"
+  path="$LOG_DIR/state-dedupe.txt"; tmp="$path.$$"
+  : > "$tmp"
+  if [ -f "$path" ]; then
+    while read -r ts k; do
+      [ -z "$k" ] && continue
+      [ $((now - ts)) -lt "$DEDUPE_SECONDS" ] || continue
+      printf '%s %s\n' "$ts" "$k" >> "$tmp"
+      [ "$k" = "$key" ] && dup=0
+    done < "$path"
+  fi
+  [ "$dup" -ne 0 ] && printf '%s %s\n' "$now" "$key" >> "$tmp"
+  mv -f "$tmp" "$path"
+  return "$dup"
 }
 
 rotate_log() { # rotate_log <file> <max_mb> <max_files>

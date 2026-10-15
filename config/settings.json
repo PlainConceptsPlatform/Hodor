@@ -2,7 +2,11 @@
   "otel": {
     "enabled": true,
     "endpoint": "",
-    "queueMaxSizeMB": 2
+    "queueMaxSizeMB": 2,
+    "background": true,
+    "flushBatchSize": 200,
+    "retryMinutes": 5,
+    "headers": {}
   },
   "log": {
     "dir": "",
@@ -10,8 +14,20 @@
     "maxFiles": 3
   },
   "identity": {
+    "mode": "hash",
     "email": "",
     "salt": "CHANGE-ME-IT-SALT"
+  },
+  "telemetry": {
+    "projectMode": "name",
+    "dedupeSeconds": 120
+  },
+  "usage": {
+    "trackFileReads": false
+  },
+  "inventory": {
+    "enabled": true,
+    "intervalHours": 24
   },
   "policy": {
     "blockSeverity": "critical"

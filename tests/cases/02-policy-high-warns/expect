@@ -3,3 +3,5 @@ stdout ~ systemMessage
 stdout ~ WARNING
 seclog ~ "event":"policy_warning"
 seclog ~ "action":"warn"
+telemetry ~ "severityNumber":13
+telemetry !~ pc.ai.policy_block

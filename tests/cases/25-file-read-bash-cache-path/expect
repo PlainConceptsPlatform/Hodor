@@ -1,0 +1,4 @@
+exit 0
+telemetry ~ pc-presales
+telemetry ~ drawio
+telemetry ~ file_read

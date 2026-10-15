@@ -1,0 +1,18 @@
+# Overlay: require a bearer token on the OTLP/HTTP receiver (tasks B5).
+# Hooks side: install-local.ps1 -OtelToken <token>  (-> otel.headers.Authorization = "Bearer <token>")
+#   docker compose -f docker-compose.yml -f docker-compose.auth.yml up -d
+extensions:
+  bearertokenauth:
+    scheme: Bearer
+    token: ${env:HODOR_INGEST_TOKEN}
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: bearertokenauth
+
+service:
+  extensions: [health_check, bearertokenauth]
