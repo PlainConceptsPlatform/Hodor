@@ -83,7 +83,9 @@ if (-not [string]::IsNullOrWhiteSpace($Prompt)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($FileText)) {
     $text = $FileText -replace '\\', '/'
-    $rx = '(?i)(/?(?:[^/\s"''<>|]+/)*)(?:skills/([^/\s"''<>|]+)/SKILL\.md|agents/([^/\s"''<>|]+?)\.md|commands/([^\s"''<>|]+?)\.md)'
+    # Reading a file of the workspace you are in is editing it (plugin authors), not using it
+    $cwdNorm = if ($Cwd) { ($Cwd -replace '\\', '/').TrimEnd('/') + '/' } else { '' }
+    $rx ='(?i)(/?(?:[^/\s"''<>|]+/)*)(?:skills/([^/\s"''<>|]+)/SKILL\.md|agents/([^/\s"''<>|]+?)\.md|commands/([^\s"''<>|]+?)\.md)'
     foreach ($m in [regex]::Matches($text, $rx)) {
         $segments = @($m.Groups[1].Value.TrimEnd('/') -split '/' | Where-Object { $_ })
         # Plugin = the folder holding skills/agents/commands, skipping a version folder (plugin cache: <plugin>/<version>/skills/...)
@@ -95,6 +97,7 @@ if (-not [string]::IsNullOrWhiteSpace($FileText)) {
         }
         if ($plugin -match '^\.(claude|copilot|github)$') { $plugin = '' }
         $fullPath = $m.Value
+        if ($cwdNorm -and $fullPath.StartsWith($cwdNorm, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
         if ($m.Groups[2].Success) { $bare = $m.Groups[2].Value; $k = 'skill' }
         elseif ($m.Groups[3].Success) { $bare = $m.Groups[3].Value -replace '\.agent$', ''; $k = 'agent' }
         else { $bare = $m.Groups[4].Value -replace '/', ':'; $k = 'command' }

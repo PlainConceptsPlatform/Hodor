@@ -86,9 +86,15 @@ if [ -n "$PROMPT" ]; then
 fi
 
 if [ -n "$FILE_TEXT" ]; then
-  text="$(printf '%s' "$FILE_TEXT" | tr '\\' '/')"
+  text="$(printf '%s' "$FILE_TEXT" | tr '\\' '/' | tr -s '/')"   # squeeze: raw JSON text has C:\\x, i.e. C://x
+  # Reading a file of the workspace you are in is editing it (plugin authors), not using it
+  cwd_norm=""
+  [ -n "$CWD" ] && cwd_norm="$(printf '%s' "$CWD" | tr '\\' '/' | tr -s '/' | tr '[:upper:]' '[:lower:]' | sed 's#/*$##')/"
   while IFS= read -r m; do
     [ -z "$m" ] && continue
+    if [ -n "$cwd_norm" ]; then
+      case "$(printf '%s' "$m" | tr '[:upper:]' '[:lower:]')" in "$cwd_norm"*) continue ;; esac
+    fi
     case "$m" in
       */SKILL.md|*/skill.md) kind="skill"; prefix="${m%/skills/*}"; bare="${m##*/skills/}"; bare="${bare%/*}" ;;
       *agents/*)             kind="agent"; prefix="${m%/agents/*}"; bare="${m##*/agents/}"; bare="${bare%.md}"; bare="${bare%.agent}" ;;

@@ -35,7 +35,7 @@ ORG_PLUGIN_PREFIX="$(_setting '.skills.orgPluginPrefix' 'pc-')"
 IDENTITY_MODE="$(_setting '.identity.mode' 'hash')"            # hash | email (email also sends pc.user)
 PROJECT_MODE="$(_setting '.telemetry.projectMode' 'name')"     # name | hash
 DEDUPE_SECONDS="$(_setting '.telemetry.dedupeSeconds' 120)"     # same skill, same session, within N s = 1 use (0 = off)
-TRACK_FILE_READS="$(_setting '.usage.trackFileReads' false)"   # heuristic: skills/agents loaded by reading their .md
+TRACK_FILE_READS="$(_setting '.usage.trackFileReads' false)"   # heuristic: skills/agents loaded by reading their .md (Claude; always on for Copilot)
 if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS_FILE" ]; then
   # 'enabled' is not a unique leaf key, so the no-jq fallback cannot read it (inventory needs jq anyway)
   INVENTORY_ENABLED="$(jq -r 'if .inventory.enabled == false then "false" else "true" end' "$SETTINGS_FILE" 2>/dev/null)"

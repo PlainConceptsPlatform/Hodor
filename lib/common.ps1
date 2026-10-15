@@ -31,7 +31,7 @@ function Get-AiHooksSettings {
     Set-SettingDefault $s 'identity' 'mode' 'hash'          # hash | email (email also sends pc.user)
     Set-SettingDefault $s 'telemetry' 'projectMode' 'name'  # name | hash
     Set-SettingDefault $s 'telemetry' 'dedupeSeconds' 120   # same skill in the same session within N s = 1 use (0 = off)
-    Set-SettingDefault $s 'usage' 'trackFileReads' $false   # heuristic: count skills/agents loaded by reading their .md
+    Set-SettingDefault $s 'usage' 'trackFileReads' $false   # heuristic: count skills/agents loaded by reading their .md (Claude; always on for Copilot)
     Set-SettingDefault $s 'inventory' 'enabled' $true
     Set-SettingDefault $s 'inventory' 'intervalHours' 24    # resend the inventory at most every N h (or when it changes)
     return $s

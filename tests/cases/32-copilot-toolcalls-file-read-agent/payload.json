@@ -1,0 +1,1 @@
+{"sessionId":"cp-32","cwd":"/nowhere/proposal","toolCalls":[{"id":"t1","name":"view","args":{"path":"/x/plugins/pc-zeta/agents/auditor.agent.md"}},{"id":"t2","name":"view","args":{"path":"/nowhere/proposal/config.yml"}}]}

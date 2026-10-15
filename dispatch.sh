@@ -47,14 +47,19 @@ json_field() { # json_field <field...> - first non-empty field from the payload
   done
 }
 
+TOOL_IN=""    # tool input JSON of one batched call (toolCalls[].args); empty = read it from the payload
 tool_arg() { # tool_arg <field...> - first non-empty field of the tool input (object, or JSON string as Copilot CLI sends it)
   local f v
   for f in "$@"; do
     if command -v jq >/dev/null 2>&1; then
-      v="$(printf '%s' "$INPUT" | jq -r --arg f "$f" '(.tool_input // .toolInput // .toolArgs // .tool_args // {})
-            | (if type == "string" then (fromjson? // {}) else . end) | .[$f] // empty | tostring' 2>/dev/null)"
+      if [ -n "$TOOL_IN" ]; then
+        v="$(printf '%s' "$TOOL_IN" | jq -r --arg f "$f" '.[$f] // empty | tostring' 2>/dev/null)"
+      else
+        v="$(printf '%s' "$INPUT" | jq -r --arg f "$f" '(.tool_input // .toolInput // .toolArgs // .tool_args // {})
+              | (if type == "string" then (fromjson? // {}) else . end) | .[$f] // empty | tostring' 2>/dev/null)"
+      fi
     else
-      v="$(printf '%s' "$INPUT" | sed -n "s/.*\"$f\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n1)"
+      v="$(printf '%s' "${TOOL_IN:-$INPUT}" | sed -n "s/.*\"$f\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n1)"
     fi
     [ -n "$v" ] && { printf '%s' "$v"; return; }
   done
@@ -168,25 +173,47 @@ main() {
       ;;
 
     PreToolUse|preToolUse)
-      local tool name text
+      local tool name track_reads=false
+      # File-read heuristic: opt-in on Claude (needs an extra Read|Bash matcher); free on Copilot, whose
+      # preToolUse already runs for every tool call.
+      { [ "$TRACK_FILE_READS" = "true" ] || [ "$AGENT" = "copilot" ]; } && track_reads=true
+      handle_tool() { # handle_tool <tool name> - usage.sh lines for one call (its input: TOOL_IN, or the payload)
+        local name text
+        case "$1" in
+          [Ss]kill)
+            name="$(tool_arg skill name command)"
+            [ -n "$name" ] && "$AIHOOKS_ROOT/layers/usage/usage.sh" "" "$name" skill "" "$CWD" "$AGENT"
+            ;;
+          [Tt]ask|[Aa]gent)
+            name="$(tool_arg subagent_type subagentType agent_type agentType name)"
+            [ -n "$name" ] && "$AIHOOKS_ROOT/layers/usage/usage.sh" "" "$name" agent "" "$CWD" "$AGENT"
+            ;;
+          Read|read|view|Bash|bash|shell|powershell|PowerShell)
+            # Heuristic: a skill/agent/command loaded by reading its .md instead of being invoked
+            if [ "$track_reads" = true ]; then
+              text="$(tool_arg file_path filePath path command)"
+              [ -n "$text" ] && "$AIHOOKS_ROOT/layers/usage/usage.sh" "" "" "" "$text" "$CWD" "$AGENT"
+            fi
+            ;;
+        esac
+        return 0
+      }
       tool="$(json_field tool_name toolName)"
-      case "$tool" in
-        [Ss]kill)
-          name="$(tool_arg skill name command)"
-          [ -n "$name" ] && "$AIHOOKS_ROOT/layers/usage/usage.sh" "" "$name" skill "" "$CWD" "$AGENT" | send_usage
-          ;;
-        [Tt]ask|[Aa]gent)
-          name="$(tool_arg subagent_type subagentType agent_type agentType name)"
-          [ -n "$name" ] && "$AIHOOKS_ROOT/layers/usage/usage.sh" "" "$name" agent "" "$CWD" "$AGENT" | send_usage
-          ;;
-        Read|read|view|Bash|bash|shell|powershell|PowerShell)
-          # Heuristic (opt-in): a skill/agent/command loaded by reading its .md instead of being invoked
-          if [ "$TRACK_FILE_READS" = "true" ]; then
-            text="$(tool_arg file_path filePath path command)"
-            [ -n "$text" ] && "$AIHOOKS_ROOT/layers/usage/usage.sh" "" "" "" "$text" "$CWD" "$AGENT" | send_usage
-          fi
-          ;;
-      esac
+      if [ -n "$tool" ]; then
+        handle_tool "$tool" | send_usage
+      elif command -v jq >/dev/null 2>&1; then
+        # Batch as the Copilot CLI agents window sends it: toolCalls[{name, args}] -> two lines per call (name, args JSON)
+        while IFS= read -r name && IFS= read -r TOOL_IN; do
+          [ -n "$name" ] && handle_tool "$name"
+        done < <(printf '%s' "$INPUT" | jq -r '(.toolCalls // .tool_calls // [])[]
+                   | (.name // .toolName // ""),
+                     ((.args // .arguments // .input // {}) | (if type == "string" then (fromjson? // {}) else . end) | tojson)' 2>/dev/null) \
+          | send_usage
+        TOOL_IN=""
+      elif [ "$track_reads" = true ]; then
+        # No jq: scan the whole batch for skill/agent/command .md paths (Skill/Task names in a batch need jq)
+        "$AIHOOKS_ROOT/layers/usage/usage.sh" "" "" "" "$INPUT" "$CWD" "$AGENT" | send_usage
+      fi
       ;;
 
     SessionStart|sessionStart)

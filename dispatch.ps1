@@ -205,19 +205,35 @@ try {
 
         '^(PreToolUse|preToolUse)$' {
             # ---- Usage layer: skill/agent invocation via tools ----
+            # One call (toolName/toolInput), or a batch as the Copilot CLI agents window sends it: toolCalls[{name, args}]
+            $calls = @()
+            if ($toolName) { $calls += [pscustomobject]@{ name = $toolName; input = $toolInput } }
+            else {
+                foreach ($c in @(Get-Field $payload @('toolCalls', 'tool_calls'))) {
+                    if (-not $c) { continue }
+                    $in = Get-Field $c @('args', 'arguments', 'input')
+                    if ($in -is [string]) { try { $in = $in | ConvertFrom-Json } catch { $in = $null } }
+                    $calls += [pscustomobject]@{ name = [string](Get-Field $c @('name', 'toolName')); input = $in }
+                }
+            }
+            # File-read heuristic: opt-in on Claude (needs an extra Read|Bash matcher); free on Copilot, whose
+            # preToolUse already runs for every tool call.
+            $trackReads = $settings.usage.trackFileReads -or $Agent -eq 'copilot'
             $skills = @()
-            if ($toolName -match '^[Ss]kill$') {
-                $name = [string](Get-Field $toolInput @('skill', 'name', 'command'))
-                if ($name) { $skills = & (Join-Path $Root 'layers\usage\usage.ps1') -SkillName $name -Kind skill -Cwd $cwd -Client $Agent -Root $Root }
-            }
-            elseif ($toolName -match '^([Tt]ask|[Aa]gent)$') {
-                $name = [string](Get-Field $toolInput @('subagent_type', 'subagentType', 'agent_type', 'agentType', 'name'))
-                if ($name) { $skills = & (Join-Path $Root 'layers\usage\usage.ps1') -SkillName $name -Kind agent -Cwd $cwd -Client $Agent -Root $Root }
-            }
-            elseif ($settings.usage.trackFileReads -and $toolName -match '^(Read|read|view|Bash|bash|shell|powershell|PowerShell)$') {
-                # Heuristic (opt-in): a skill/agent/command loaded by reading its .md instead of being invoked
-                $text = [string](Get-Field $toolInput @('file_path', 'filePath', 'path', 'command'))
-                if ($text) { $skills = & (Join-Path $Root 'layers\usage\usage.ps1') -FileText $text -Cwd $cwd -Client $Agent -Root $Root }
+            foreach ($c in $calls) {
+                if ($c.name -match '^[Ss]kill$') {
+                    $name = [string](Get-Field $c.input @('skill', 'name', 'command'))
+                    if ($name) { $skills += @(& (Join-Path $Root 'layers\usage\usage.ps1') -SkillName $name -Kind skill -Cwd $cwd -Client $Agent -Root $Root) }
+                }
+                elseif ($c.name -match '^([Tt]ask|[Aa]gent)$') {
+                    $name = [string](Get-Field $c.input @('subagent_type', 'subagentType', 'agent_type', 'agentType', 'name'))
+                    if ($name) { $skills += @(& (Join-Path $Root 'layers\usage\usage.ps1') -SkillName $name -Kind agent -Cwd $cwd -Client $Agent -Root $Root) }
+                }
+                elseif ($trackReads -and $c.name -match '^(Read|read|view|Bash|bash|shell|powershell|PowerShell)$') {
+                    # Heuristic: a skill/agent/command loaded by reading its .md instead of being invoked
+                    $text = [string](Get-Field $c.input @('file_path', 'filePath', 'path', 'command'))
+                    if ($text) { $skills += @(& (Join-Path $Root 'layers\usage\usage.ps1') -FileText $text -Cwd $cwd -Client $Agent -Root $Root) }
+                }
             }
             Send-UsageEvents $skills
         }
