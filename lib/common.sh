@@ -30,9 +30,8 @@ OTEL_ENABLED="$(_setting '.otel.enabled' true)"
 OTEL_ENDPOINT="$(_setting '.otel.endpoint' '')"
 OTEL_QUEUE_MAX_MB="$(_setting '.otel.queueMaxSizeMB' 2)"
 SUPPORT_CHANNEL="$(_setting '.support.channel' '#ai-hooks (Teams)')"
-POLICY_BLOCK_SEVERITY="$(_setting '.policy.blockSeverity' 'critical')"
+POLICY_BLOCK_SEVERITY="$(_setting '.policy.blockSeverity' 'warning')"   # warning = warn-only (never blocks the user)
 ORG_PLUGIN_PREFIX="$(_setting '.skills.orgPluginPrefix' 'pc-')"
-IDENTITY_MODE="$(_setting '.identity.mode' 'hash')"            # hash | email (email also sends pc.user)
 PROJECT_MODE="$(_setting '.telemetry.projectMode' 'name')"     # name | hash
 DEDUPE_SECONDS="$(_setting '.telemetry.dedupeSeconds' 120)"     # same skill, same session, within N s = 1 use (0 = off)
 TRACK_FILE_READS="$(_setting '.usage.trackFileReads' false)"   # heuristic: skills/agents loaded by reading their .md (Claude; always on for Copilot)
@@ -42,7 +41,7 @@ if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS_FILE" ]; then
 else
   INVENTORY_ENABLED="true"
 fi
-INVENTORY_INTERVAL_HOURS="$(_setting '.inventory.intervalHours' 24)"
+INVENTORY_INTERVAL_HOURS="$(_setting '.inventory.intervalHours' 720)"   # 720 h = 30 days
 if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS_FILE" ]; then
   # jq's '//' treats false as missing, so read the boolean explicitly
   OTEL_BACKGROUND="$(jq -r 'if .otel.background == false then "false" else "true" end' "$SETTINGS_FILE" 2>/dev/null)"
@@ -57,7 +56,7 @@ severity_rank() { # severity_rank <severity> -> numeric rank
     critical) echo 3 ;;
     high)     echo 2 ;;
     medium)   echo 1 ;;
-    none)     echo 99 ;; # threshold 'none' = warn-only (nothing reaches it)
+    warning|none) echo 99 ;; # threshold 'warning' (legacy 'none') = warn-only (nothing reaches it)
     *)        echo 0 ;;
   esac
 }
@@ -97,18 +96,38 @@ short_hash() { # short_hash <text> -> first 16 hex chars of sha256
   fi
 }
 
-user_hash() {
-  local email salt
-  email="$(_setting '.identity.email' '')"
-  [ -z "$email" ] && email="${USER:-unknown}@local"
-  salt="$(_setting '.identity.salt' 'CHANGE-ME-IT-SALT')"
-  short_hash "${email}${salt}"
+claude_account_email() { # email Claude Code is signed in with (.claude.json -> oauthAccount.emailAddress), or empty
+  local f="${AIHOOKS_CLAUDE_HOME:-${CLAUDE_CONFIG_DIR:-$HOME}}/.claude.json"
+  [ -f "$f" ] || return 0
+  grep -o '"emailAddress"[[:space:]]*:[[:space:]]*"[^"]*"' "$f" 2>/dev/null | head -n1 | sed 's/.*"\([^"]*\)"$/\1/' | tr '[:upper:]' '[:lower:]'
 }
 
-user_email() { # clear-text identity (identity.mode = email): settings -> git user.email -> USER@local
-  local email
+copilot_login() { # GitHub login Copilot CLI is signed in with (config.json -> lastLoggedInUser.login), or empty
+  local f="${AIHOOKS_COPILOT_HOME:-$HOME/.copilot}/config.json"
+  [ -f "$f" ] || return 0
+  # No jq: the file starts with // comments, which jq rejects.
+  tr -d '\r\n' < "$f" | grep -o '"lastLoggedInUser"[[:space:]]*:[[:space:]]*{[^}]*}' | head -n1 \
+    | sed -n 's/.*"login"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+client_account() { # client_account <agent> -> "type|id" (claude|email, github|login, or "|")
+  local id=""
+  case "$1" in
+    claude-code) id="$(claude_account_email)"; [ -n "$id" ] && { printf 'claude|%s' "$id"; return; } ;;
+    copilot)     id="$(copilot_login)";        [ -n "$id" ] && { printf 'github|%s' "$id"; return; } ;;
+  esac
+  printf '|'
+}
+
+user_email() { # the person (always clear-text email): settings -> Claude account -> git user.email -> Windows UPN -> USER@local
+  local email upn
   email="$(_setting '.identity.email' '')"
+  [ -z "$email" ] && email="$(claude_account_email)"
   [ -z "$email" ] && email="$(git config --global user.email 2>/dev/null)"
+  if [ -z "$email" ] && [ -n "${SYSTEMROOT:-}" ]; then # Git Bash on Windows: Entra/AD account
+    upn="$("$(cygpath -u "$SYSTEMROOT" 2>/dev/null || printf '%s' "$SYSTEMROOT")/System32/whoami.exe" /upn 2>/dev/null | tr -d '\r')"
+    case "$upn" in *@*.*) email="$upn" ;; esac
+  fi
   [ -z "$email" ] && email="${USER:-unknown}@local"
   printf '%s' "$email" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]'
 }
@@ -119,17 +138,24 @@ repo_name() { # repo_name <git-url> -> org/repo (GitHub) or project/repo (Azure 
   printf '%s' "$u" | tr '\\' '/' | tr '/' '\n' | grep -v -e '^$' -e '^_git$' | tail -n 2 | paste -sd/ -
 }
 
-project_name() { # project_name <cwd> -> git origin -> folder name -> unknown (hashed if projectMode=hash)
+folder_name() { # folder_name <cwd> -> leaf folder of cwd -> unknown (hashed if projectMode=hash)
+  local cwd="${1:-$PWD}"
+  cwd="$(printf '%s' "$cwd" | tr '\\' '/')"; cwd="${cwd%/}"
+  _protect_project "${cwd##*/}" unknown
+}
+
+project_name() { # project_name <cwd> -> git origin org/repo, or empty (hashed if projectMode=hash)
   local cwd="${1:-$PWD}" name="" url
   if [ -d "$cwd" ]; then
     url="$(git -C "$cwd" remote get-url origin 2>/dev/null)"
     [ -n "$url" ] && name="$(repo_name "$url")"
   fi
-  if [ -z "$name" ]; then
-    cwd="$(printf '%s' "$cwd" | tr '\\' '/')"; cwd="${cwd%/}"
-    name="${cwd##*/}"
-  fi
-  [ -z "$name" ] && { printf 'unknown'; return; }
+  _protect_project "$name" ""
+}
+
+_protect_project() { # _protect_project <name> <fallback> -> name or fallback, hashed if projectMode=hash (empty stays empty)
+  local name="${1:-$2}"
+  [ -z "$name" ] && return 0
   if [ "$PROJECT_MODE" = "hash" ]; then
     short_hash "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')$(_setting '.identity.salt' 'CHANGE-ME-IT-SALT')"
   else

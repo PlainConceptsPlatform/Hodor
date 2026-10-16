@@ -1,0 +1,4 @@
+exit 0
+telemetry ~ "pc.user"
+telemetry ~ test@local
+telemetry !~ pc.user_hash

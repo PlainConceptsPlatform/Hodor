@@ -1,0 +1,1 @@
+{"otel":{"enabled":true,"endpoint":"","queueMaxSizeMB":2},"log":{"dir":"__LOGDIR__","maxSizeMB":5,"maxFiles":3},"identity":{"email":"test@local","salt":"TEST"},"policy":{"blockSeverity":"critical"},"skills":{"orgPluginPrefix":"pc-"}}

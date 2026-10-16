@@ -84,12 +84,12 @@ try {
     $cwd       = [string](Get-Field $payload @('cwd', 'workspaceFolder', 'workspace_folder'))
     $sessionId = [string](Get-Field $payload @('session_id', 'sessionId', 'conversation_id', 'conversationId'))
 
-    # Shared who/where attributes, computed once and only when something is emitted (project = git call).
+    # Shared who/where attributes, computed once and only when something is emitted (project/user = git calls).
     $script:common = $null
     function Get-Common {
         if (-not $script:common) {
             $script:common = Get-CommonAttributes -Settings $settings -Agent $Agent -HooksVersion $hooksVersion `
-                -SessionId $sessionId -Project (Get-ProjectName $settings $cwd)
+                -SessionId $sessionId -Folder (Get-FolderName $settings $cwd) -Project (Get-ProjectName $settings $cwd)
         }
         return $script:common
     }

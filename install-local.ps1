@@ -4,7 +4,7 @@
 # Without admin rights, use a different target folder:
 #   ... -File .\install-local.ps1 -Dest "$env:LOCALAPPDATA\PlainConcepts\ai-hooks"
 # Optional settings (applied on top of the installed config; existing values are otherwise preserved):
-#   -OtelEndpoint http://localhost:4318  -OtelToken <ingest token>  -IdentityEmail me@corp.com  -IdentityMode email|hash  -TrackFileReads
+#   -OtelEndpoint http://localhost:4318  -OtelToken <ingest token>  -IdentityEmail me@corp.com  -TrackFileReads
 #   (-OtelToken is stored in clear text in settings.json as otel.headers.Authorization = 'Bearer <token>':
 #    fine for a collector ingest token, never use a real secret here)
 param(
@@ -13,7 +13,6 @@ param(
     [string]$OtelEndpoint,
     [string]$OtelToken,
     [string]$IdentityEmail,
-    [ValidateSet('', 'hash', 'email')][string]$IdentityMode = '',
     [switch]$TrackFileReads
 )
 $ErrorActionPreference = 'Stop'
@@ -60,7 +59,6 @@ if ($OtelToken) {
     Set-Cfg 'otel' 'headers' $h
 }
 if ($IdentityEmail) { Set-Cfg 'identity' 'email' $IdentityEmail }
-if ($IdentityMode) { Set-Cfg 'identity' 'mode' $IdentityMode }
 if ($TrackFileReads) { Set-Cfg 'usage' 'trackFileReads' $true }
 [System.IO.File]::WriteAllText($destSettings, ($cfg | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "[OK] Config: $destSettings (previous values kept)"
@@ -149,7 +147,7 @@ if (-not $SkipTests) {
 Write-Host ""
 Write-Host "== Remaining manual steps =="
 Write-Host "1. VS Code: enable the 'chat.useHooks' setting (agent hooks are in preview)."
-Write-Host "2. Check $Dest\config\settings.json -> identity.email/mode and otel.endpoint (or pass -OtelEndpoint / -OtelToken / -IdentityEmail / -IdentityMode)."
+Write-Host "2. Check $Dest\config\settings.json -> identity.email and otel.endpoint (or pass -OtelEndpoint / -OtelToken / -IdentityEmail)."
 Write-Host "   Check end to end: powershell -NoProfile -File $Dest\dispatch.ps1 -Event selftest"
 Write-Host "3. Restart Claude Code / reload VS Code so the hooks load."
 Write-Host ""

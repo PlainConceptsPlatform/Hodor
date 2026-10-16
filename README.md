@@ -2,7 +2,7 @@
 
 Corporate hooks for VS Code (Copilot Chat), GitHub Copilot CLI and Claude Code.
 
-**Policy = block on critical**: a prompt with a **critical** finding (real secrets: AWS/GCP/Azure keys, GitHub/Stripe tokens, private keys, credit cards) is **blocked before reaching the model**. `high`/`medium` findings stay as a non-blocking **warning** (the request continues). The threshold is configurable via `policy.blockSeverity` (`critical` default, `high`, or `none` = warn-only).
+**Policy = warn, never block (default)**: any finding (including **critical** ones: real secrets such as AWS/GCP/Azure keys, GitHub/Stripe tokens, private keys, credit cards) shows the user a non-blocking **warning** and the request continues. Blocking can be re-enabled via `policy.blockSeverity` (`warning` default = warn-only, `critical`, or `high`; `none` is accepted as an alias of `warning`).
 
 Layers: `policy` (blocks/warns when the prompt violates the company AI policy), `usage` (skill/agent/command usage), `inventory` (what each user has installed).
 Telemetry: OTel log events (`pc.ai.skill_usage`, `pc.ai.inventory`, `pc.ai.policy_warning`, `pc.ai.policy_block`, `pc.ai.hook_issue`, `pc.ai.selftest`) → OTel Collector → App Insights. The hook never waits for the network: events are queued on disk and a detached worker sends them (see [Sending telemetry](#sending-telemetry)).
@@ -19,17 +19,17 @@ No maintained catalog is required. Classification is derived from the name at ru
 
 ### What each event carries
 
-Every event: `pc.agent` (client: `claude-code` / `copilot`), `pc.user_hash`, `pc.user` (only with `identity.mode=email`), `pc.project` (git `org/repo` of the session `cwd`, or folder name; hashed with `telemetry.projectMode=hash`), `pc.session_id`, `pc.hooks_version`.
+Every event: `pc.agent` (client: `claude-code` / `copilot`), `pc.user` (the person, always an email: `identity.email` → Claude account email (`~/.claude.json`) → `git config --global user.email` → Windows UPN (`whoami /upn`) → `USERNAME@local`), `pc.account` + `pc.account_type` (account of the tool that raised the event: `claude` = Claude account email, `github` = Copilot CLI GitHub login from `~/.copilot/config.json` → `lastLoggedInUser`; empty when unknown, e.g. Claude with an API key or Copilot only in VS Code), `pc.folder` (folder name of the session `cwd`), `pc.project` (git `org/repo` from the `origin` remote of the session `cwd`, empty when there is none; both hashed with `telemetry.projectMode=hash`), `pc.session_id`, `pc.hooks_version`.
 
 | Event | When | Specific attributes |
 |---|---|---|
 | `pc.ai.skill_usage` | Skill / Agent (`Task`) tool call, `/plugin:name` in the prompt, a bare `/name` at the start of the prompt **when installed locally**, or (opt-in) reading a skill/agent `.md` | `pc.skill` (canonical: agents by their frontmatter `name`, the same from Claude Code and Copilot), `pc.skill_raw` (name as invoked, e.g. `risks-analyzer` from Copilot), `pc.plugin`, `pc.source`, `pc.kind` (`skill`/`agent`/`command`), `pc.via` (`tool`/`prompt`/`file_read`), `pc.plugin_version`, `pc.marketplace` |
-| `pc.ai.inventory` | `SessionStart`, at most every `inventory.intervalHours` (24) or when the installed set changes; one event per plugin install + one per client for personal items, same `pc.inventory_id` | `pc.client`, `pc.plugin`, `pc.plugin_version`, `pc.marketplace`, `pc.marketplace_repo`, `pc.scope`, `pc.scope_project`, `pc.enabled`, `pc.install_ok`, `pc.source`, `pc.{skills,agents,commands}_count`, `pc.skills` / `pc.agents` / `pc.commands` (name lists) |
+| `pc.ai.inventory` | `SessionStart`, at most every `inventory.intervalHours` (720 = 30 days) or when the installed set changes; one event per plugin install + one per client for personal items, same `pc.inventory_id` | `pc.client`, `pc.plugin`, `pc.plugin_version`, `pc.marketplace`, `pc.marketplace_repo`, `pc.scope`, `pc.scope_project`, `pc.enabled`, `pc.install_ok`, `pc.source`, `pc.{skills,agents,commands}_count`, `pc.skills` / `pc.agents` / `pc.commands` (name lists) |
 | `pc.ai.policy_warning` / `pc.ai.policy_block` | Prompt with a policy finding (warned / blocked) | `pc.rule`, `pc.severity`, `pc.action`, `pc.evidence` (redacted) |
 | `pc.ai.hook_issue` | Hook failure, or records lost because the offline queue was full | `pc.error`, `pc.dropped` |
 | `pc.ai.selftest` | `dispatch -Event selftest` | `pc.selftest` |
 
-Severity (`severityText` / `severityNumber`): `skill_usage`, `inventory`, `selftest` → `INFO` (9); `policy_warning` → `WARN` (13); `policy_block`, `hook_issue` → `ERROR` (17). Resource attributes: `service.name=pc-ai-hooks`, `service.version`, `os.type`, `host.name` (hashed unless `identity.mode=email`).
+Severity (`severityText` / `severityNumber`): `skill_usage`, `inventory`, `selftest` → `INFO` (9); `policy_warning` → `WARN` (13); `policy_block`, `hook_issue` → `ERROR` (17). Resource attributes: `service.name=pc-ai-hooks`, `service.version`, `os.type`, `host.name`.
 
 The same skill in the same session within `telemetry.dedupeSeconds` (120 s) counts once (e.g. `/pc-x:y` typed + the Skill tool call that follows). Commands are recognized by their file (`commands/<a>/<b>.md` → `a:b`), so built-ins like `/clear` are never counted.
 
@@ -148,7 +148,8 @@ Coverage: block-on-critical vs warn (and the `policy.blockSeverity` threshold), 
 ## Quick manual check without an IDE
 
 ```powershell
-# CRITICAL -> BLOCKS: prints {"decision":"block",...} on stdout, the reason on stderr, exit code 2
+# CRITICAL -> WARNS by default (policy.blockSeverity=warning): prints {"systemMessage":...}, exit code 0
+# (with policy.blockSeverity=critical: {"decision":"block",...} on stdout, the reason on stderr, exit code 2)
 '{"prompt":"upload this with token ghp_0123456789abcdefghijklmnopqrstuvwxyz12"}' |
   powershell -NoProfile -ExecutionPolicy Bypass -File $env:LOCALAPPDATA\PlainConcepts\ai-hooks\dispatch.ps1 -Event UserPromptSubmit -Agent claude-code
 "exit=$LASTEXITCODE"
@@ -208,7 +209,7 @@ The hook emits all block signals (stderr message + `{"decision":"block"}` on std
 
 ```bash
 chmod +x dispatch.sh layers/policy/scan-prompt.sh layers/usage/usage.sh
-# CRITICAL -> blocks (exit 2)
+# CRITICAL -> warns (exit 0; blocks with exit 2 only if policy.blockSeverity=critical)
 echo '{"prompt":"token ghp_0123456789abcdefghijklmnopqrstuvwxyz12"}' | ./dispatch.sh UserPromptSubmit claude-code; echo "exit=$?"
 # Skill usage
 echo '{"tool_name":"Skill","tool_input":{"skill":"pc-ai:debugger"}}' | ./dispatch.sh PreToolUse claude-code

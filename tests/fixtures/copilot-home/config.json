@@ -1,0 +1,9 @@
+// User settings belong in settings.json.
+// This file is managed automatically.
+{
+  "loggedInUsers": [{"host": "https://github.com", "login": "octo-personal"}, {"host": "https://github.com", "login": "octo-corp"}],
+  "lastLoggedInUser": {
+    "host": "https://github.com",
+    "login": "octo-corp"
+  }
+}

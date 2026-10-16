@@ -65,7 +65,6 @@ tool_arg() { # tool_arg <field...> - first non-empty field of the tool input (ob
   done
 }
 
-UHASH="$(user_hash)"
 BLOCK_EXIT=0   # set to 2 when a prompt is blocked
 CWD="$(json_field cwd workspaceFolder workspace_folder)"
 SID="$(json_field session_id sessionId conversation_id conversationId)"
@@ -75,8 +74,9 @@ export ORG_PLUGIN_PREFIX PROJECT_MODE
 COMMON=(); COMMON_READY=0
 common_attrs() {
   [ "$COMMON_READY" = 1 ] && return
-  COMMON=("pc.agent=$AGENT" "pc.user_hash=$UHASH" "pc.hooks_version=$VERSION" "pc.project=$(project_name "$CWD")")
-  [ "$IDENTITY_MODE" = "email" ] && COMMON+=("pc.user=$(user_email)")
+  local account; account="$(client_account "$AGENT")"
+  COMMON=("pc.agent=$AGENT" "pc.user=$(user_email)" "pc.account=${account#*|}" "pc.account_type=${account%%|*}" "pc.hooks_version=$VERSION" \
+    "pc.folder=$(folder_name "$CWD")" "pc.project=$(project_name "$CWD")")
   [ -n "$SID" ] && COMMON+=("pc.session_id=$SID")
   COMMON_READY=1
 }

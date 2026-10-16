@@ -14,7 +14,6 @@
     "maxFiles": 3
   },
   "identity": {
-    "mode": "hash",
     "email": "",
     "salt": "CHANGE-ME-IT-SALT"
   },
@@ -27,10 +26,10 @@
   },
   "inventory": {
     "enabled": true,
-    "intervalHours": 24
+    "intervalHours": 720
   },
   "policy": {
-    "blockSeverity": "critical"
+    "blockSeverity": "warning"
   },
   "skills": {
     "orgPluginPrefix": "pc-"

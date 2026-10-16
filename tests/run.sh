@@ -11,7 +11,7 @@ CASES="$HERE/cases"
 WORK="$(mktemp -d 2>/dev/null || mktemp -d -t hodor)"
 LOGDIR="$WORK/logs"; mkdir -p "$LOGDIR"
 SETTINGS="$WORK/settings.json"
-BASE='{"otel":{"enabled":true,"endpoint":"","queueMaxSizeMB":2},"log":{"dir":"__LOGDIR__","maxSizeMB":5,"maxFiles":3},"identity":{"email":"test@local","salt":"TEST"},"policy":{"blockSeverity":"critical"},"skills":{"orgPluginPrefix":"pc-"}}'
+BASE='{"otel":{"enabled":true,"endpoint":"","queueMaxSizeMB":2},"log":{"dir":"__LOGDIR__","maxSizeMB":5,"maxFiles":3},"identity":{"email":"test@local","salt":"TEST"},"skills":{"orgPluginPrefix":"pc-"}}'
 
 PASS=0; FAIL=0
 ok()  { printf '  PASS  %s\n' "$1"; PASS=$((PASS+1)); }
@@ -92,6 +92,13 @@ n="$(count_in "$(cat "$QUEUE" 2>/dev/null)" 'pc.ai.skill_usage')"
 run PreToolUse claude-code '{"tool_name":"Skill","tool_input":{"skill":"pc-demo:deploy"},"session_id":"dd-2"}'
 n="$(count_in "$(cat "$QUEUE" 2>/dev/null)" 'pc.ai.skill_usage')"
 [ "$n" = 2 ] && ok 'dedupe: another session counts again' || bad 'dedupe: another session counts again' "got $n"
+
+rm -f "$LOGDIR"/* 2>/dev/null
+REPO_DIR="$WORK/my-folder"
+mkdir -p "$REPO_DIR" && git -C "$REPO_DIR" init -q && git -C "$REPO_DIR" remote add origin 'https://github.com/owner/NombreRepo.git'
+run PreToolUse claude-code "{\"tool_name\":\"Skill\",\"tool_input\":{\"skill\":\"pc-demo:deploy\"},\"session_id\":\"prj-1\",\"cwd\":\"$REPO_DIR\"}"
+q="$(cat "$QUEUE" 2>/dev/null)"
+if contains "$q" 'owner/NombreRepo' && contains "$q" 'my-folder'; then ok 'project: git origin -> pc.project, folder -> pc.folder'; else bad 'project from git origin' "$q"; fi
 
 if [ "$HAS_JQ" = 1 ]; then
   rm -f "$LOGDIR"/* 2>/dev/null

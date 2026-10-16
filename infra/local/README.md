@@ -70,7 +70,7 @@ customEvents
 | where name startswith "pc.ai."
 | extend skill = tostring(customDimensions["pc.skill"]), plugin = tostring(customDimensions["pc.plugin"]),
          kind = tostring(customDimensions["pc.kind"]), source = tostring(customDimensions["pc.source"]),
-         agent = tostring(customDimensions["pc.agent"]), user = tostring(customDimensions["pc.user_hash"]),
+         agent = tostring(customDimensions["pc.agent"]), user = tostring(customDimensions["pc.user"]),
          version = tostring(customDimensions["service.version"])
 | project timestamp, name, kind, plugin, skill, source, agent, user, version
 | order by timestamp desc

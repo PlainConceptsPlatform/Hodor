@@ -58,7 +58,6 @@ function Get-OtlpResourceJson {
     if ((Get-Variable IsMacOS -ErrorAction SilentlyContinue) -and $IsMacOS) { $os = 'darwin' }
     elseif ((Get-Variable IsLinux -ErrorAction SilentlyContinue) -and $IsLinux) { $os = 'linux' }
     $hostName = [System.Environment]::MachineName
-    if ("$($Settings.identity.mode)" -ne 'email') { $hostName = Get-ShortHash ($hostName.ToLower() + $Settings.identity.salt) }
     $attrs = ConvertTo-OtlpAttributes -Attributes ([ordered]@{
         'service.name'    = 'pc-ai-hooks'
         'service.version' = $script:OtelServiceVersion

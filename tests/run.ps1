@@ -15,7 +15,7 @@ $logDir = Join-Path $work 'logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $settingsFile = Join-Path $work 'settings.json'
 $logDirFwd = ($logDir -replace '\\', '/')
-$baseSettings = '{"otel":{"enabled":true,"endpoint":"","queueMaxSizeMB":2},"log":{"dir":"__LOGDIR__","maxSizeMB":5,"maxFiles":3},"identity":{"email":"test@local","salt":"TEST"},"policy":{"blockSeverity":"critical"},"skills":{"orgPluginPrefix":"pc-"}}'
+$baseSettings = '{"otel":{"enabled":true,"endpoint":"","queueMaxSizeMB":2},"log":{"dir":"__LOGDIR__","maxSizeMB":5,"maxFiles":3},"identity":{"email":"test@local","salt":"TEST"},"skills":{"orgPluginPrefix":"pc-"}}'
 
 # Fake ~/.claude and ~/.copilot (a pc-demo plugin, personal skills/commands) so tests never read the real homes.
 $fixtures = Join-Path $work 'fixtures'
@@ -109,6 +109,16 @@ if ($n -eq 1) { Ok 'dedupe: /cmd prompt + Skill tool in same session = 1 use' } 
 Invoke-Dispatch 'PreToolUse' 'claude-code' $pOther $outF $errF | Out-Null
 $n = Count-In (Read-Text $queuePath) 'pc.ai.skill_usage'
 if ($n -eq 2) { Ok 'dedupe: another session counts again' } else { Bad 'dedupe: another session counts again' "got $n" }
+
+Get-ChildItem $logDir -File -ErrorAction SilentlyContinue | Remove-Item -Force
+$repoDir = Join-Path $work 'my-folder'
+New-Item -ItemType Directory -Force -Path $repoDir | Out-Null
+& git -C $repoDir init -q 2>$null | Out-Null
+& git -C $repoDir remote add origin 'https://github.com/owner/NombreRepo.git' 2>$null | Out-Null
+$pRepo = New-Payload ('{"tool_name":"Skill","tool_input":{"skill":"pc-demo:deploy"},"session_id":"prj-1","cwd":"' + ($repoDir -replace '\\', '/') + '"}')
+Invoke-Dispatch 'PreToolUse' 'claude-code' $pRepo $outF $errF | Out-Null
+$q = Read-Text $queuePath
+if ($q.Contains('owner/NombreRepo') -and $q.Contains('my-folder')) { Ok 'project: git origin -> pc.project, folder -> pc.folder' } else { Bad 'project from git origin' $q }
 
 Get-ChildItem $logDir -File -ErrorAction SilentlyContinue | Remove-Item -Force
 $pStart = New-Payload '{"session_id":"inv-1"}'

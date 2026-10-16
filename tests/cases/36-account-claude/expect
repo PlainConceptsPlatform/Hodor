@@ -1,0 +1,4 @@
+exit 0
+telemetry ~ pc.account_type
+telemetry ~ claude.user@corp.test
+telemetry ~ test@local

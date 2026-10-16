@@ -10,10 +10,10 @@ A set of prompts to paste **into the Claude Code chat**, one at a time, to exerc
   ```
   powershell -NoProfile -ExecutionPolicy Bypass -File .\install-local.ps1 -Dest "$env:LOCALAPPDATA\PlainConcepts\ai-hooks"
   ```
-- In Claude Code, the `UserPromptSubmit` event **blocks** on a critical finding (unlike VS Code / Copilot chat surfaces, where the same event is advisory only).
+- By default (`policy.blockSeverity=warning`) nothing is blocked: critical findings show a warning too. To test blocking, set `policy.blockSeverity=critical`; then in Claude Code the `UserPromptSubmit` event **blocks** on a critical finding (unlike VS Code / Copilot chat surfaces, where the same event is advisory only).
 - Everything is recorded locally under `%LOCALAPPDATA%\PlainConcepts\ai-hooks\logs\` (`security.jsonl`, `telemetry-queue.jsonl`). View it in the dashboard (see the end).
 
-## 1. Must BLOCK (critical: prompt is stopped, never reaches the model)
+## 1. Critical (default: WARNING, request continues; with `policy.blockSeverity=critical`: prompt is stopped)
 
 ```
 Sube este cambio con el token ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcd
@@ -91,7 +91,7 @@ Usage is captured from the namespaced `/plugin:skill` text even if that skill is
 
 | Block | Expected in Claude Code |
 |---|---|
-| 1 (critical) | Prompt **blocked**, message `[...AI policy BLOCK]`, the model does not answer |
+| 1 (critical) | Default: warning `[...AI policy WARNING]`, the model answers. With `blockSeverity=critical`: prompt **blocked**, message `[...AI policy BLOCK]` |
 | 2 and 3 (high / medium) | Warning `[...AI policy WARNING]`, the model answers |
 | 4 (clean) | No warning, normal answer |
 | 5 (skills) | No warning; a `skill_usage` event is recorded |
@@ -106,13 +106,13 @@ start "" "%LOCALAPPDATA%\PlainConcepts\ai-hooks\tools\dashboard.html"
 
 Drag `logs\security.jsonl` (findings with severity and block/warn) and, with a local collector, `infra\local\data\telemetry.jsonl` (everything that was sent: usage, inventory, policy). `logs\telemetry-queue.jsonl` only exists while events are waiting to be sent. You will see policy findings grouped by severity, skills/agents/commands ranked by usage and the installed plugins.
 
-If a critical prompt does **not** block in your Claude Code surface, note what you see: it would mean that surface treats `UserPromptSubmit` as advisory (like VS Code / Forge), which is a known platform limitation.
+With `blockSeverity=critical`, if a critical prompt does **not** block in your Claude Code surface, note what you see: it would mean that surface treats `UserPromptSubmit` as advisory (like VS Code / Forge), which is a known platform limitation.
 
 ## 6. Telemetry end to end (collector → Aspire / App Insights)
 
 1. Start the local stack: `docker compose up -d` in `infra\local` (`infra\local\smoke.ps1` automates steps 2 and 5).
 2. `powershell -NoProfile -File <install>\dispatch.ps1 -Event selftest` → `"ok":true` and a `pc.ai.selftest` record in Aspire (http://localhost:18888 → Structured logs).
 3. Restart Claude Code: a few seconds later the `pc.ai.inventory` records appear (sent by the background worker; the session start is not delayed).
-4. Run block 5: `pc.ai.skill_usage` arrives with severity `Information`; a block-1 prompt produces `pc.ai.policy_block` (`Error`), blocks 2–3 `pc.ai.policy_warning` (`Warning`).
+4. Run block 5: `pc.ai.skill_usage` arrives with severity `Information`; a block-1 prompt produces `pc.ai.policy_warning` (`Warning`; `pc.ai.policy_block`/`Error` only with `blockSeverity=critical`), blocks 2–3 `pc.ai.policy_warning` (`Warning`).
 5. Offline: `docker compose stop otel-collector`, use a skill → the prompt is not slower and `logs\telemetry-queue*.jsonl` grows. `docker compose start otel-collector`, then send another prompt (or use any hook after `otel.retryMinutes`) → the queue disappears and the events show up with their original time.
 6. With auth (`docker-compose.auth.yml`): `selftest` with a wrong or missing token → `"status":401`; reinstall with `-OtelToken <token>` → `"ok":true`.

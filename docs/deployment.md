@@ -175,10 +175,9 @@ The package must ship a `config/settings.json` with:
 |---|---|
 | `otel.endpoint` | Endpoint from §3.4 |
 | `otel.headers.Authorization` | `Bearer <hodor-ingest-token>` |
-| `identity.salt` | Real salt from Key Vault. **The repo default `CHANGE-ME-IT-SALT` must never ship**: with it, `pc.user_hash` is reversible by anyone who has the repo and a list of emails. Changing it later breaks continuity of every user hash |
-| `identity.mode` | `hash` (default) or `email`; a privacy decision, see `docs/tasks.md` |
+| `identity.salt` | Real salt from Key Vault. **The repo default `CHANGE-ME-IT-SALT` must never ship**: it is only used when `telemetry.projectMode=hash` (project/folder hashes). Changing it later breaks continuity of those hashes |
 | `telemetry.projectMode` | `name` or `hash` (pending decision in `docs/tasks.md`) |
-| `policy.blockSeverity` | `critical` |
+| `policy.blockSeverity` | `warning` (warn-only; `critical` to block) |
 | `support.channel` | Real support channel |
 
 The pipeline writes these at build time from GitHub secrets / Key Vault; they are never committed.
@@ -253,7 +252,7 @@ The bash dispatcher exists (`dispatch.sh`, path `/opt/plainconcepts/ai-hooks/`),
 ## 6. Rollout order
 
 1. Azure: App Insights + Key Vault + collector (§3). Verify with `curl` and a `selftest` from one machine installed with `install-local.ps1 -OtelEndpoint <prod> -OtelToken <token>`.
-2. Decide the open privacy items (`identity.mode`, `telemetry.projectMode`, evidence in telemetry) and generate the real salt.
+2. Decide the open privacy items (`telemetry.projectMode`, evidence in telemetry) and generate the real salt.
 3. Repo: `packaging/install.ps1`, `build.ps1`, `release.yml`, `infra/azure/` (Bicep + collector config).
 4. Entra: app registration for Graph publishing.
 5. Intune: Win32 app + per-user hook + Claude managed settings + VS Code policy, assigned to the **pilot** group only.

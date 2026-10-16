@@ -29,7 +29,6 @@ _otlp_resource() {
   local os host
   case "$(uname -s 2>/dev/null)" in Darwin) os=darwin ;; Linux) os=linux ;; *) os=windows ;; esac
   host="$(hostname 2>/dev/null || printf unknown)"
-  [ "$IDENTITY_MODE" = "email" ] || host="$(short_hash "$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')$(_setting '.identity.salt' 'CHANGE-ME-IT-SALT')")"
   _otlp_attrs "service.name=pc-ai-hooks" "service.version=${VERSION:-$(hooks_version)}" "os.type=$os" "host.name=$host"
 }
 

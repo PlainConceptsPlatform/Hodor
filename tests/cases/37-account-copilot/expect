@@ -1,0 +1,5 @@
+exit 0
+telemetry ~ pc.account_type
+telemetry ~ github
+telemetry ~ octo-corp
+telemetry !~ octo-personal
