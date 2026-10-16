@@ -342,6 +342,7 @@ $vo = Join-Path $work 'v.txt'
 $vp = Start-Process -FilePath $psExe -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $dispatch, '-Event', 'version') -RedirectStandardInput $empty -RedirectStandardOutput $vo -RedirectStandardError (Join-Path $work 've.txt') -PassThru -Wait -NoNewWindow
 if ($vp.ExitCode -eq 0 -and (Read-Text $vo) -match '"version"') { Ok 'dispatch -Event version -> json, exit 0' } else { Bad 'dispatch -Event version' "exit $($vp.ExitCode)" }
 
+Stop-MockOtlp $mock
 $env:AIHOOKS_CLAUDE_HOME = $null; $env:AIHOOKS_COPILOT_HOME = $null
 Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "`nResult: $($script:pass) passed, $($script:fail) failed`n"

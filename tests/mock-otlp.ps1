@@ -7,15 +7,17 @@ function Start-MockOtlp {
     New-Item -ItemType Directory -Path $Dir -Force | Out-Null
     $tcp = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
     $tcp.Start(); $port = $tcp.LocalEndpoint.Port; $tcp.Stop()
+    $state = [hashtable]::Synchronized(@{})
     $ps = [powershell]::Create()
     $null = $ps.AddScript({
-        param($Prefix, $Dir)
+        param($Prefix, $Dir, $State)
         $l = New-Object System.Net.HttpListener
         $l.Prefixes.Add($Prefix)
         $l.Start()
+        $State.listener = $l
         $modePath = Join-Path $Dir 'mode.txt'
         while ($l.IsListening) {
-            $ctx = $l.GetContext()
+            try { $ctx = $l.GetContext() } catch { break }   # Stop-MockOtlp closes the listener
             $body = (New-Object System.IO.StreamReader($ctx.Request.InputStream, [System.Text.Encoding]::UTF8)).ReadToEnd()
             $mode = if (Test-Path $modePath) { (Get-Content $modePath -Raw).Trim() } else { '200' }
             $code = 200
@@ -30,10 +32,19 @@ function Start-MockOtlp {
             $ctx.Response.OutputStream.Write($b, 0, $b.Length)
             $ctx.Response.Close()
         }
-    }).AddArgument("http://localhost:$port/").AddArgument($Dir)
-    $null = $ps.BeginInvoke()
+    }).AddArgument("http://localhost:$port/").AddArgument($Dir).AddArgument($state)
+    $handle = $ps.BeginInvoke()
     Start-Sleep -Milliseconds 300
-    return @{ ps = $ps; port = $port; dir = $Dir; endpoint = "http://localhost:$port" }
+    return @{ ps = $ps; handle = $handle; state = $state; port = $port; dir = $Dir; endpoint = "http://localhost:$port" }
+}
+
+function Stop-MockOtlp {
+    # The listener thread blocks in GetContext() and keeps pwsh alive after 'exit': close it explicitly.
+    param($Mock)
+    if (-not $Mock) { return }
+    try { if ($Mock.state.listener) { $Mock.state.listener.Close() } } catch { }
+    try { $null = $Mock.handle.AsyncWaitHandle.WaitOne(5000) } catch { }
+    try { $Mock.ps.Dispose() } catch { }
 }
 
 function Reset-MockOtlp {
