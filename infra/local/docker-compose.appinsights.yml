@@ -1,0 +1,9 @@
+# Overlay: also export to a dev Application Insights.
+#   docker compose -f docker-compose.yml -f docker-compose.appinsights.yml up -d
+services:
+  otel-collector:
+    command: ["--config=/etc/otelcol/config.yaml", "--config=/etc/otelcol/appinsights.yaml"]
+    volumes:
+      - ./otel-collector.appinsights.yaml:/etc/otelcol/appinsights.yaml:ro
+    environment:
+      APPLICATIONINSIGHTS_CONNECTION_STRING: ${APPLICATIONINSIGHTS_CONNECTION_STRING:?set it in infra/local/.env}

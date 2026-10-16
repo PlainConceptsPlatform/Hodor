@@ -1,0 +1,2 @@
+# mycmd
+Personal command fixture.

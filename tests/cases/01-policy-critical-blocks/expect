@@ -5,6 +5,7 @@ stderr ~ BLOCK
 seclog ~ "event":"policy_block"
 seclog ~ "action":"block"
 seclog ~ "rule":"GITHUB_TOKEN"
-telemetry ~ pc.ai.policy_warning
+telemetry ~ pc.ai.policy_block
 seclog !~ ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcd
 seclog !~ SECRETCTX
+telemetry ~ "severityNumber":17

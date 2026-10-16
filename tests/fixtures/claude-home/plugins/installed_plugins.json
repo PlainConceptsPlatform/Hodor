@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "plugins": {
+    "pc-demo@demo-market": [
+      { "scope": "user", "installPath": "__FIXTURES__/plugins-src/pc-demo", "version": "1.4.0", "installedAt": "2026-10-01T00:00:00.000Z" }
+    ],
+    "pc-ghost@demo-market": [
+      { "scope": "user", "installPath": "__FIXTURES__/plugins-src/does-not-exist", "version": "0.0.1" }
+    ]
+  }
+}

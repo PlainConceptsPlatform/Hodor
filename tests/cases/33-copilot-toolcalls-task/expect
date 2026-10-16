@@ -1,0 +1,4 @@
+exit 0
+telemetry ~ pc.ai.skill_usage
+telemetry ~ auditor
+telemetry ~ "stringValue":"tool"

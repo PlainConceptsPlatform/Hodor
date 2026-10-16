@@ -1,0 +1,6 @@
+exit 0
+telemetry ~ pc.demo.reviewer
+telemetry ~ pc.skill_raw
+telemetry ~ "stringValue":"reviewer"
+telemetry ~ "stringValue":"agent"
+telemetry ~ pc-demo

@@ -16,17 +16,52 @@ function Get-AiHooksSettings {
         $s.log.dir = Join-Path $env:LOCALAPPDATA 'PlainConcepts\ai-hooks\logs'
     }
     # Defaults for settings that older installs may not have
-    if (-not ($s.PSObject.Properties['policy'])) {
-        $s | Add-Member -NotePropertyName policy -NotePropertyValue ([pscustomobject]@{ blockSeverity = 'critical' }) -Force
-    } elseif ([string]::IsNullOrWhiteSpace($s.policy.blockSeverity)) {
-        $s.policy | Add-Member -NotePropertyName blockSeverity -NotePropertyValue 'critical' -Force
-    }
-    if (-not ($s.PSObject.Properties['skills'])) {
-        $s | Add-Member -NotePropertyName skills -NotePropertyValue ([pscustomobject]@{ orgPluginPrefix = 'pc-' }) -Force
-    } elseif ([string]::IsNullOrWhiteSpace($s.skills.orgPluginPrefix)) {
-        $s.skills | Add-Member -NotePropertyName orgPluginPrefix -NotePropertyValue 'pc-' -Force
-    }
+    Set-SettingDefault $s 'policy' 'blockSeverity' 'warning'   # warning = warn-only (never blocks the user)
+    Set-SettingDefault $s 'otel' 'queueMaxSizeMB' 2         # missing = 0 MB = the queue rotates on every write
+    Set-SettingDefault $s 'otel' 'background' $true         # queue only + detached flush worker (false = send inside the hook)
+    Set-SettingDefault $s 'otel' 'flushBatchSize' 200       # records per OTLP request when flushing the queue
+    Set-SettingDefault $s 'otel' 'retryMinutes' 5           # an idle queue is retried at most every N minutes
+    Set-SettingDefault $s 'log' 'maxSizeMB' 5
+    Set-SettingDefault $s 'log' 'maxFiles' 3
+    Set-SettingDefault $s 'skills' 'orgPluginPrefix' 'pc-'
+    Set-SettingDefault $s 'telemetry' 'projectMode' 'name'  # name | hash
+    Set-SettingDefault $s 'telemetry' 'dedupeSeconds' 120   # same skill in the same session within N s = 1 use (0 = off)
+    Set-SettingDefault $s 'usage' 'trackFileReads' $false   # heuristic: count skills/agents loaded by reading their .md (Claude; always on for Copilot)
+    Set-SettingDefault $s 'inventory' 'enabled' $true
+    Set-SettingDefault $s 'inventory' 'intervalHours' 720   # resend the inventory at most every N h (720 = 30 days; or when it changes)
     return $s
+}
+
+function Set-SettingDefault {
+    param($Settings, [string]$Section, [string]$Key, $Value)
+    if (-not $Settings.PSObject.Properties[$Section]) {
+        $Settings | Add-Member -NotePropertyName $Section -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    $p = $Settings.$Section.PSObject.Properties[$Key]
+    if (-not $p -or $null -eq $p.Value -or "$($p.Value)" -eq '') {
+        $Settings.$Section | Add-Member -NotePropertyName $Key -NotePropertyValue $Value -Force
+    }
+}
+
+function Get-ShortHash {
+    param([string]$Text)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Text))
+        return ([System.BitConverter]::ToString($bytes) -replace '-', '').Substring(0, 16).ToLower()
+    } finally { $sha.Dispose() }
+}
+
+function Invoke-NativeQuiet {
+    # Runs a native command and returns trimmed stdout, or '' on any failure (never throws, even with EAP=Stop).
+    param([string]$Exe, [string[]]$Arguments)
+    $eap = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $out = & $Exe @Arguments 2>$null
+        if ($LASTEXITCODE -eq 0 -and $out) { return ("$(@($out)[0])").Trim() }
+    } catch { } finally { $ErrorActionPreference = $eap }
+    return ''
 }
 
 function Get-SeverityRank {
@@ -35,7 +70,8 @@ function Get-SeverityRank {
         'critical' { 3 }
         'high'     { 2 }
         'medium'   { 1 }
-        'none'     { 99 }  # threshold 'none' = warn-only (nothing reaches it)
+        'warning'  { 99 }  # threshold 'warning' = warn-only (nothing reaches it)
+        'none'     { 99 }  # legacy alias of 'warning'
         default    { 0 }
     }
 }
@@ -75,16 +111,143 @@ function Get-RedactedText {
     return $t.Substring(0, 4) + '...' + $t.Substring($t.Length - 4)
 }
 
-function Get-UserHash {
+function Get-UserEmail {
+    # The person (always clear-text email): settings -> Claude account -> git global user.email -> Windows UPN -> USERNAME@local
     param($Settings)
-    $email = $Settings.identity.email
+    $email = [string]$Settings.identity.email
+    if ([string]::IsNullOrWhiteSpace($email)) { $email = Get-ClaudeAccountEmail }
+    if ([string]::IsNullOrWhiteSpace($email)) { $email = Invoke-NativeQuiet 'git' @('config', '--global', 'user.email') }
+    if ([string]::IsNullOrWhiteSpace($email) -and $env:SystemRoot) {
+        $upn = Invoke-NativeQuiet (Join-Path $env:SystemRoot 'System32\whoami.exe') @('/upn')   # Entra/AD account
+        if ($upn -match '^[^@\s]+@[^@\s]+$') { $email = $upn }
+    }
     if ([string]::IsNullOrWhiteSpace($email)) { $email = "$($env:USERNAME)@local" }
-    $raw = $email + $Settings.identity.salt
-    $sha = [System.Security.Cryptography.SHA256]::Create()
+    return $email.Trim().ToLower()
+}
+
+function Get-ClaudeAccountEmail {
+    # Email of the account Claude Code is signed in with (.claude.json -> oauthAccount.emailAddress), or ''.
+    # Regex instead of ConvertFrom-Json: the file also holds per-project history and can be large.
+    $dir = if ($env:AIHOOKS_CLAUDE_HOME) { $env:AIHOOKS_CLAUDE_HOME } elseif ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { $env:USERPROFILE }
+    $f = Join-Path $dir '.claude.json'
+    if (-not (Test-Path -LiteralPath $f)) { return '' }
     try {
-        $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($raw))
-        return ([System.BitConverter]::ToString($bytes) -replace '-', '').Substring(0, 16).ToLower()
-    } finally { $sha.Dispose() }
+        $m = [regex]::Match([System.IO.File]::ReadAllText($f), '"emailAddress"\s*:\s*"([^"]+)"')
+        if ($m.Success) { return $m.Groups[1].Value.Trim().ToLower() }
+    } catch { }
+    return ''
+}
+
+function Get-CopilotLogin {
+    # GitHub login Copilot CLI is signed in with (~/.copilot/config.json -> lastLoggedInUser.login), or ''.
+    $dir = if ($env:AIHOOKS_COPILOT_HOME) { $env:AIHOOKS_COPILOT_HOME } else { Join-Path $env:USERPROFILE '.copilot' }
+    $f = Join-Path $dir 'config.json'
+    if (-not (Test-Path -LiteralPath $f)) { return '' }
+    # Regex: the file starts with // comments, which ConvertFrom-Json rejects on Windows PowerShell 5.1.
+    try {
+        $m = [regex]::Match([System.IO.File]::ReadAllText($f), '"lastLoggedInUser"\s*:\s*\{[^}]*"login"\s*:\s*"([^"]+)"')
+        if ($m.Success) { return $m.Groups[1].Value }
+    } catch { }
+    return ''
+}
+
+function Get-ClientAccount {
+    # Account of the tool that raised the event: claude -> Claude account email, copilot -> GitHub login.
+    param([string]$Agent)
+    if ($Agent -eq 'claude-code') { $id = Get-ClaudeAccountEmail; if ($id) { return @{ type = 'claude'; id = $id } } }
+    elseif ($Agent -eq 'copilot') { $id = Get-CopilotLogin; if ($id) { return @{ type = 'github'; id = $id } } }
+    return @{ type = ''; id = '' }
+}
+
+function ConvertTo-RepoName {
+    # git remote URL -> "org/repo" (GitHub) or "project/repo" (Azure DevOps)
+    param([string]$Url)
+    $u = $Url.Trim() -replace '\.git$', ''
+    $u = $u -replace '^[^@/]+@([^:/]+):', '$1/'   # scp-like: git@github.com:org/repo
+    $parts = @($u -split '[/\\]' | Where-Object { $_ -and $_ -ne '_git' })
+    if ($parts.Count -ge 2) { return ($parts[$parts.Count - 2] + '/' + $parts[$parts.Count - 1]) }
+    if ($parts.Count -eq 1) { return $parts[0] }
+    return ''
+}
+
+function Protect-ProjectValue {
+    # Hashed if telemetry.projectMode = hash; empty stays empty.
+    param($Settings, [string]$Name)
+    if ($Name -and "$($Settings.telemetry.projectMode)" -eq 'hash') { return Get-ShortHash ($Name.ToLower() + $Settings.identity.salt) }
+    return $Name
+}
+
+function Get-FolderName {
+    # Folder of the session: leaf of the payload cwd -> 'unknown'.
+    param($Settings, [string]$Cwd)
+    if ([string]::IsNullOrWhiteSpace($Cwd)) { $Cwd = (Get-Location).Path }
+    $name = Split-Path -Leaf ($Cwd.TrimEnd('\', '/'))
+    if (-not $name) { $name = 'unknown' }
+    return Protect-ProjectValue $Settings $name
+}
+
+function Get-ProjectName {
+    # Project of the session: git origin of the payload cwd ("org/repo"), or '' when there is none.
+    param($Settings, [string]$Cwd)
+    if ([string]::IsNullOrWhiteSpace($Cwd)) { $Cwd = (Get-Location).Path }
+    $name = ''
+    if (Test-Path -LiteralPath $Cwd) {
+        $url = Invoke-NativeQuiet 'git' @('-C', $Cwd, 'remote', 'get-url', 'origin')
+        if ($url) { $name = ConvertTo-RepoName $url }
+    }
+    return Protect-ProjectValue $Settings $name
+}
+
+function Get-CommonAttributes {
+    # Attributes shared by every event: who, where, which session, which build.
+    param($Settings, [string]$Agent, [string]$HooksVersion, [string]$SessionId, [string]$Folder, [string]$Project)
+    $account = Get-ClientAccount $Agent
+    $a = @{
+        'pc.agent'         = $Agent
+        'pc.user'          = (Get-UserEmail $Settings)
+        'pc.account'       = $account.id
+        'pc.account_type'  = $account.type
+        'pc.hooks_version' = $HooksVersion
+        'pc.folder'        = $Folder
+        'pc.project'       = $Project
+    }
+    if ($SessionId) { $a['pc.session_id'] = $SessionId }
+    return $a
+}
+
+function Read-StateFile {
+    param($Settings, [string]$Name)
+    $path = Join-Path $Settings.log.dir $Name
+    if (-not (Test-Path $path)) { return $null }
+    try { return (Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { return $null }
+}
+
+function Write-StateFile {
+    param($Settings, [string]$Name, $Object)
+    $dir = $Settings.log.dir
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Set-Content -Path (Join-Path $dir $Name) -Value ($Object | ConvertTo-Json -Compress -Depth 6) -Encoding UTF8
+}
+
+function Test-UsageDuplicate {
+    # True when the same key was already counted within telemetry.dedupeSeconds
+    # (e.g. a /plugin:skill prompt followed by the Skill tool call for the same skill).
+    param($Settings, [string]$Key)
+    $window = [int]$Settings.telemetry.dedupeSeconds
+    if ($window -le 0) { return $false }
+    $now = [System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $live = @{}
+    $state = Read-StateFile $Settings 'state-dedupe.json'
+    if ($state) {
+        foreach ($p in $state.PSObject.Properties) {
+            if (($now - [long]$p.Value) -lt $window) { $live[$p.Name] = [long]$p.Value }
+        }
+    }
+    $k = $Key.ToLower()
+    if ($live.ContainsKey($k)) { return $true }
+    $live[$k] = $now
+    Write-StateFile $Settings 'state-dedupe.json' ([pscustomobject]$live)
+    return $false
 }
 
 function Write-AiHooksLog {

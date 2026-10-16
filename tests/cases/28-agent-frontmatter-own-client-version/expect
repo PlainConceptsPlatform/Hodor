@@ -1,0 +1,4 @@
+exit 0
+telemetry ~ pc.demo.reviewer
+telemetry ~ 1.4.0
+telemetry !~ 9.9.9

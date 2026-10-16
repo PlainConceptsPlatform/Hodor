@@ -1,0 +1,9 @@
+exit 0
+stdout ~ systemMessage
+stdout ~ GITHUB_TOKEN
+stdout !~ "decision":"block"
+stderr !~ BLOCK
+seclog ~ "event":"policy_warning"
+seclog ~ "severity":"critical"
+telemetry ~ pc.ai.policy_warning
+telemetry !~ pc.ai.policy_block

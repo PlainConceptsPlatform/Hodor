@@ -1,0 +1,30 @@
+# Overlay merged on top of otel-collector.yaml: adds the Azure Monitor (App Insights) exporter.
+# Own pipeline (logs/appinsights) so the extra attributes below never reach the local file / Aspire.
+# Business events (usage, inventory, policy) -> customEvents table; diagnostics (hook_issue, selftest) -> traces.
+# Attributes go to customDimensions in both tables.
+processors:
+  # The exporter builds a custom event from the microsoft.custom_event.name attribute and drops resource
+  # attributes on that path, so copy the ones we query into the record.
+  transform/custom_events:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        conditions:
+          - IsMatch(log.body, "^pc\\.ai\\.(skill_usage|inventory|policy_warning|policy_block)$")
+        statements:
+          - set(log.attributes["microsoft.custom_event.name"], log.body)
+          - set(log.attributes["service.version"], resource.attributes["service.version"])
+          - set(log.attributes["os.type"], resource.attributes["os.type"])
+          - set(log.attributes["host.name"], resource.attributes["host.name"])
+
+exporters:
+  azuremonitor:
+    connection_string: ${env:APPLICATIONINSIGHTS_CONNECTION_STRING}
+    custom_events_enabled: true
+
+service:
+  pipelines:
+    logs/appinsights:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/custom_events, batch]
+      exporters: [azuremonitor]

@@ -1,0 +1,12 @@
+exit 0
+stdout_empty
+telemetry ~ pc.ai.inventory
+telemetry ~ pc-demo
+telemetry ~ deck:create
+telemetry ~ pc.demo.reviewer
+telemetry ~ PlainConcepts/skills
+telemetry ~ my-personal-skill
+telemetry ~ pc-copilot-demo
+telemetry ~ 0.3.0
+telemetry ~ pc-ghost
+telemetry ~ pc.install_ok

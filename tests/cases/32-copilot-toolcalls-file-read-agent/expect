@@ -1,0 +1,5 @@
+exit 0
+telemetry ~ pc.ai.skill_usage
+telemetry ~ pc-zeta
+telemetry ~ auditor
+telemetry ~ file_read

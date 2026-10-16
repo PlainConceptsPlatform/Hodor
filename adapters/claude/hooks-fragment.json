@@ -1,6 +1,17 @@
 {
   "_comment": "Fragment to merge into managed-settings.json (production) or %USERPROFILE%\\.claude\\settings.json (local testing).",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\ProgramData\\PlainConcepts\\ai-hooks\\dispatch.ps1\" -Event SessionStart -Agent claude-code",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
@@ -24,7 +35,7 @@
         ]
       },
       {
-        "matcher": "Task",
+        "matcher": "Task|Agent",
         "hooks": [
           {
             "type": "command",
@@ -43,6 +54,17 @@
             "timeout": 15
           }
         ]
+      }
+    ]
+  },
+  "_trackFileReads": {
+    "_comment": "Opt-in (install-local.ps1 -TrackFileReads): appended to PreToolUse to count skills/agents loaded by reading their .md",
+    "matcher": "Read|Bash",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\ProgramData\\PlainConcepts\\ai-hooks\\dispatch.ps1\" -Event PreToolUse -Agent claude-code",
+        "timeout": 10
       }
     ]
   }

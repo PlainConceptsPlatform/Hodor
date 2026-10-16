@@ -1,0 +1,4 @@
+exit 0
+telemetry ~ mycmd
+telemetry ~ personal
+telemetry ~ command

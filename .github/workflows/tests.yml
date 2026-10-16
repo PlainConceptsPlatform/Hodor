@@ -10,6 +10,7 @@ jobs:
   powershell:
     name: PowerShell suite (Windows)
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
@@ -21,6 +22,7 @@ jobs:
   bash:
     name: Bash suite (Linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
