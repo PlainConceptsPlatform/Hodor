@@ -21,7 +21,7 @@ jobs:
 
   bash:
     name: Bash suite (Linux)
-    runs-on: ubuntu-latest
+    runs-on: agents-arc
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
