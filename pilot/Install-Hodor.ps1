@@ -58,8 +58,8 @@ if ($selfRepo -and -not $PSBoundParameters.ContainsKey('RepoDir') -and (Test-Pat
 Step 2 "Getting Hodor into $RepoDir"
 if (Test-Path (Join-Path $RepoDir '.git')) {
     & git -C $RepoDir pull --ff-only
-    if ($LASTEXITCODE -ne 0) { Fail "Could not update $RepoDir (git pull). Delete the folder and run this again." }
-    Ok "Repo updated"
+    if ($LASTEXITCODE -ne 0) { Warn "Could not update $RepoDir (git pull); installing the local copy as is." }
+    else { Ok "Repo updated" }
 } elseif (Test-Path $RepoDir) {
     Fail "$RepoDir already exists and is not a git repo. Delete it or pass -RepoDir <another folder>."
 } else {
