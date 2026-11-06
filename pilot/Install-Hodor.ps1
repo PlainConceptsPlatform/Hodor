@@ -1,13 +1,14 @@
 # Install-Hodor.ps1 - One-step install of the Hodor pilot (AI hooks).
 #
-# Usage (PowerShell, no admin rights needed), always from a git clone of the repo:
-#   git clone https://github.com/PlainConceptsPlatform/Hodor.git "$env:USERPROFILE\Hodor"
-#   powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Hodor\pilot\Install-Hodor.ps1"
-#   (optional: -Token <TOKEN>)
+# Usage (PowerShell, no admin rights needed). The script clones the repo itself, so this is the only step:
+#   powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/PlainConceptsPlatform/Hodor/main/pilot/Install-Hodor.ps1)))"
+# or, with the file downloaded / from a clone:
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Hodor.ps1 [-Token <TOKEN>]
+# Hodor itself is always installed from a git clone (never a zip: the version is stamped from git).
 #
 # What it does:
 #   1. Checks prerequisites (Git) and asks for the ingest token
-#   2. Updates the clone it runs from (git pull); clones into %USERPROFILE%\Hodor if run standalone
+#   2. Clones the repo into %USERPROFILE%\Hodor (or git-pulls it if already there / if run from a clone)
 #   3. Resolves your corporate UPN (whoami /upn) as identity
 #   4. Runs install-local.ps1 with the Atlas endpoint and the token
 #   5. Enables chat.useHooks in VS Code (if installed)
@@ -49,8 +50,9 @@ Ok "Token received"
 
 # 2. Repo -------------------------------------------------------------------------
 # Run from a clone (pilot\Install-Hodor.ps1)? Use that clone unless -RepoDir was given.
-$selfRepo = Split-Path $PSScriptRoot -Parent
-if (-not $PSBoundParameters.ContainsKey('RepoDir') -and (Test-Path (Join-Path $selfRepo '.git')) -and (Test-Path (Join-Path $selfRepo 'install-local.ps1'))) {
+# ($PSScriptRoot is empty when the script runs straight from the web via irm.)
+$selfRepo = if ($PSScriptRoot) { Split-Path $PSScriptRoot -Parent } else { '' }
+if ($selfRepo -and -not $PSBoundParameters.ContainsKey('RepoDir') -and (Test-Path (Join-Path $selfRepo '.git')) -and (Test-Path (Join-Path $selfRepo 'install-local.ps1'))) {
     $RepoDir = $selfRepo
 }
 Step 2 "Getting Hodor into $RepoDir"
