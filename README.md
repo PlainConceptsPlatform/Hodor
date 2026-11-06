@@ -112,11 +112,11 @@ It prints the version, install/config/log paths, whether the Claude Code and Cop
 
 ## Pilot installation (Windows, one script)
 
-For pilot testers: `pilot/Install-Hodor.ps1` clones this repo to `%USERPROFILE%\Hodor`, resolves the corporate UPN (`System32\whoami.exe /upn`), runs `install-local.ps1` against the Atlas endpoint with the ingest token (asked interactively, or `-Token` / `$env:HODOR_TOKEN`), enables `chat.useHooks` in VS Code (backup `settings.json.hodor.bak`; skipped if the file has comments) and runs the selftest.
+For pilot testers, always from a git clone (never a zip: without `.git` the version cannot be stamped). `pilot/Install-Hodor.ps1` updates the clone it runs from (`git pull --ff-only`), resolves the corporate UPN (`System32\whoami.exe /upn`), runs `install-local.ps1` against the Atlas endpoint with the ingest token (asked interactively, or `-Token` / `$env:HODOR_TOKEN`), enables `chat.useHooks` in VS Code (backup `settings.json.hodor.bak`; skipped if the file has comments) and runs the selftest.
 
 ```powershell
-irm https://raw.githubusercontent.com/PlainConceptsPlatform/Hodor/main/pilot/Install-Hodor.ps1 -OutFile Install-Hodor.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Hodor.ps1
+git clone https://github.com/PlainConceptsPlatform/Hodor.git "$env:USERPROFILE\Hodor"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Hodor\pilot\Install-Hodor.ps1"
 ```
 
 `pilot/Uninstall-Hodor.ps1` reverts it: stops background workers, removes only Hodor's hooks from `~/.claude/settings.json` (other hooks and settings are kept; backup `.hodor-uninstall.bak`), deletes the Copilot hook file, the install folder and the repo copy (`-KeepRepo`, `-KeepLogs` zips the logs to the Desktop), and turns `chat.useHooks` back off if the installer enabled it.

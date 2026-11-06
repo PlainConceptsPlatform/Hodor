@@ -1,24 +1,29 @@
-# Uninstall-Hodor.ps1 - Desinstala el piloto de Hodor (hooks de IA).
+# Uninstall-Hodor.ps1 - Uninstalls the Hodor pilot (AI hooks).
 #
-# Uso (PowerShell, sin permisos de administrador). Cierra antes Claude Code y VS Code:
+# Usage (PowerShell, no admin rights needed). Close Claude Code and VS Code first:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\Uninstall-Hodor.ps1
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\Uninstall-Hodor.ps1 -KeepRepo -KeepLogs
 #
-# Que hace:
-#   1. Detiene los procesos de Hodor en segundo plano (envio de telemetria)
-#   2. Quita los hooks de Hodor de ~/.claude/settings.json (respeta el resto de hooks y ajustes)
-#   3. Quita el hook de Copilot (~/.copilot/hooks/company-hooks.json)
-#   4. Borra la instalacion (%LOCALAPPDATA%\PlainConcepts\ai-hooks) y, por defecto, la copia del repo
-#   5. Restaura chat.useHooks en VS Code si lo activo Install-Hodor.ps1
+# What it does:
+#   1. Stops Hodor background processes (telemetry sending)
+#   2. Removes Hodor's hooks from ~/.claude/settings.json (other hooks and settings are kept)
+#   3. Removes the Copilot hook (~/.copilot/hooks/company-hooks.json)
+#   4. Deletes the install (%LOCALAPPDATA%\PlainConcepts\ai-hooks) and, by default, the repo copy
+#   5. Turns chat.useHooks in VS Code back off if Install-Hodor.ps1 enabled it
 param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'PlainConcepts\ai-hooks'),
     [string]$RepoDir    = (Join-Path $env:USERPROFILE 'Hodor'),
-    [switch]$KeepRepo,   # no borrar %USERPROFILE%\Hodor
-    [switch]$KeepLogs    # guardar los logs en el Escritorio antes de borrar
+    [switch]$KeepRepo,   # do not delete %USERPROFILE%\Hodor
+    [switch]$KeepLogs    # zip the logs to the Desktop before deleting
 )
 
 $ErrorActionPreference = 'Stop'
 $script:problems = 0
+# Run from a clone (pilot\Uninstall-Hodor.ps1)? That clone is the repo to remove unless -RepoDir was given.
+$selfRepo = Split-Path $PSScriptRoot -Parent
+if (-not $PSBoundParameters.ContainsKey('RepoDir') -and (Test-Path (Join-Path $selfRepo 'install-local.ps1'))) { $RepoDir = $selfRepo }
+# Do not keep the repo folder busy as the current directory (it could not be deleted)
+Set-Location $env:USERPROFILE
 function Step($n, $msg) { Write-Host ""; Write-Host "[$n/5] $msg" -ForegroundColor Cyan }
 function Ok($msg)   { Write-Host "  [OK] $msg" -ForegroundColor Green }
 function Info($msg) { Write-Host "  [-]  $msg" -ForegroundColor DarkGray }
@@ -26,27 +31,27 @@ function Warn($msg) { Write-Host "  [!]  $msg" -ForegroundColor Yellow; $script:
 function Save-Json($path, $obj) {
     [System.IO.File]::WriteAllText($path, ($obj | ConvertTo-Json -Depth 32), (New-Object System.Text.UTF8Encoding($false)))
 }
-# Coincide con cualquier instalacion de Hodor (LOCALAPPDATA o ProgramData)
+# Matches any Hodor install (LOCALAPPDATA or ProgramData)
 $HodorPattern = 'PlainConcepts\\ai-hooks\\dispatch\.ps1'
 
-Write-Host "== Desinstalacion de Hodor ==" -ForegroundColor White
-Write-Host "Recomendado: cierra Claude Code y VS Code antes de continuar." -ForegroundColor DarkGray
+Write-Host "== Hodor uninstall ==" -ForegroundColor White
+Write-Host "Recommended: close Claude Code and VS Code before continuing." -ForegroundColor DarkGray
 
-# 1. Procesos en segundo plano ----------------------------------------------------
-Step 1 "Deteniendo procesos de Hodor en segundo plano"
+# 1. Background processes ----------------------------------------------------------
+Step 1 "Stopping Hodor background processes"
 $procs = @()
 try {
     $procs = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" |
         Where-Object { $_.CommandLine -and $_.CommandLine -match $HodorPattern -and $_.ProcessId -ne $PID })
 } catch { }
 foreach ($p in $procs) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch { } }
-if ($procs.Count) { Ok "$($procs.Count) proceso(s) detenido(s)" } else { Info "No habia procesos en ejecucion" }
+if ($procs.Count) { Ok "$($procs.Count) process(es) stopped" } else { Info "No processes running" }
 
 # 2. Claude Code -------------------------------------------------------------------
-Step 2 "Quitando los hooks de Claude Code"
+Step 2 "Removing Claude Code hooks"
 $claudeSettings = Join-Path $env:USERPROFILE '.claude\settings.json'
 if (-not (Test-Path $claudeSettings)) {
-    Info "No existe $claudeSettings"
+    Info "$claudeSettings does not exist"
 } else {
     try {
         $settings = Get-Content $claudeSettings -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -59,7 +64,7 @@ if (-not (Test-Path $claudeSettings)) {
                     if ($grp.PSObject.Properties['hooks']) {
                         $keep = @(@($grp.hooks) | Where-Object { -not ($_.command -and $_.command -match $HodorPattern) })
                         $removed += @($grp.hooks).Count - $keep.Count
-                        if ($keep.Count -eq 0) { continue }   # grupo que solo tenia hooks de Hodor
+                        if ($keep.Count -eq 0) { continue }   # group that only held Hodor hooks
                         $grp | Add-Member -NotePropertyName hooks -NotePropertyValue ([object[]]$keep) -Force
                     }
                     $groups += $grp
@@ -72,65 +77,65 @@ if (-not (Test-Path $claudeSettings)) {
         if ($removed -gt 0) {
             Copy-Item $claudeSettings "$claudeSettings.hodor-uninstall.bak" -Force
             Save-Json $claudeSettings $settings
-            Ok "$removed hook(s) eliminados (copia: settings.json.hodor-uninstall.bak)"
+            Ok "$removed hook(s) removed (backup: settings.json.hodor-uninstall.bak)"
         } else {
-            Info "No habia hooks de Hodor"
+            Info "No Hodor hooks found"
         }
     } catch {
-        Warn "No se pudo procesar ${claudeSettings}: $($_.Exception.Message)"
-        Warn "Quita a mano las entradas de 'hooks' que contengan PlainConcepts\ai-hooks\dispatch.ps1"
+        Warn "Could not process ${claudeSettings}: $($_.Exception.Message)"
+        Warn "Remove by hand the 'hooks' entries that contain PlainConcepts\ai-hooks\dispatch.ps1"
     }
 }
 
 # 3. Copilot (VS Code + Copilot CLI) -------------------------------------------------
-Step 3 "Quitando el hook de Copilot"
+Step 3 "Removing the Copilot hook"
 $copilotHook = Join-Path $env:USERPROFILE '.copilot\hooks\company-hooks.json'
 if (-not (Test-Path $copilotHook)) {
-    Info "No existe $copilotHook"
+    Info "$copilotHook does not exist"
 } elseif ((Get-Content $copilotHook -Raw -Encoding UTF8) -match 'ai-hooks') {
-    try { Remove-Item $copilotHook -Force; Ok "Eliminado $copilotHook" }
-    catch { Warn "No se pudo borrar ${copilotHook}: $($_.Exception.Message)" }
+    try { Remove-Item $copilotHook -Force; Ok "Removed $copilotHook" }
+    catch { Warn "Could not delete ${copilotHook}: $($_.Exception.Message)" }
 } else {
-    Info "$copilotHook no es de Hodor; no se toca"
+    Info "$copilotHook is not Hodor's; left untouched"
 }
 
-# 4. Ficheros -----------------------------------------------------------------------
-Step 4 "Borrando ficheros"
+# 4. Files -------------------------------------------------------------------------
+Step 4 "Deleting files"
 if ($KeepLogs) {
     $logs = Join-Path $InstallDir 'logs'
     if (Test-Path $logs) {
         $desktop = [Environment]::GetFolderPath('Desktop')
         $zip = Join-Path $desktop ("hodor-logs-{0:yyyyMMdd-HHmmss}.zip" -f (Get-Date))
-        try { Compress-Archive -Path (Join-Path $logs '*') -DestinationPath $zip -Force; Ok "Logs guardados en $zip" }
-        catch { Warn "No se pudieron guardar los logs: $($_.Exception.Message)" }
+        try { Compress-Archive -Path (Join-Path $logs '*') -DestinationPath $zip -Force; Ok "Logs saved to $zip" }
+        catch { Warn "Could not save the logs: $($_.Exception.Message)" }
     }
 }
 function Remove-Dir($path, $label) {
-    if (-not (Test-Path $path)) { Info "No existe $path"; return }
+    if (-not (Test-Path $path)) { Info "$path does not exist"; return }
     for ($i = 0; $i -lt 3; $i++) {
-        try { Remove-Item $path -Recurse -Force -ErrorAction Stop; Ok "$label eliminado: $path"; return }
+        try { Remove-Item $path -Recurse -Force -ErrorAction Stop; Ok "$label removed: $path"; return }
         catch { Start-Sleep -Milliseconds 700 }
     }
-    Warn "No se pudo borrar $path (algun fichero en uso). Cierra Claude Code / VS Code y vuelve a ejecutar."
+    Warn "Could not delete $path (a file is in use). Close Claude Code / VS Code and run this again."
 }
-Remove-Dir $InstallDir 'Instalacion'
-# Carpeta padre vacia
+Remove-Dir $InstallDir 'Install'
+# Empty parent folder
 $parent = Split-Path $InstallDir -Parent
 if ((Test-Path $parent) -and -not (Get-ChildItem $parent -Force)) { Remove-Item $parent -Force -ErrorAction SilentlyContinue }
-if ($KeepRepo) { Info "Se conserva el repo en $RepoDir (-KeepRepo)" }
+if ($KeepRepo) { Info "Keeping the repo at $RepoDir (-KeepRepo)" }
 elseif (Test-Path (Join-Path $RepoDir 'install-local.ps1')) { Remove-Dir $RepoDir 'Repo' }
-elseif (Test-Path $RepoDir) { Info "$RepoDir no parece el repo de Hodor; no se toca" }
-else { Info "No existe $RepoDir" }
+elseif (Test-Path $RepoDir) { Info "$RepoDir does not look like the Hodor repo; left untouched" }
+else { Info "$RepoDir does not exist" }
 
 $progData = 'C:\ProgramData\PlainConcepts\ai-hooks'
-if (Test-Path $progData) { Info "Existe otra instalacion en $progData (requiere administrador para borrarla)" }
+if (Test-Path $progData) { Info "Another install exists at $progData (needs admin rights to delete)" }
 
-# 5. VS Code --------------------------------------------------------------------------
-Step 5 "Revisando chat.useHooks en VS Code"
+# 5. VS Code -----------------------------------------------------------------------
+Step 5 "Checking chat.useHooks in VS Code"
 $vsSettings = Join-Path $env:APPDATA 'Code\User\settings.json'
 $vsBackup   = "$vsSettings.hodor.bak"
 if (-not (Test-Path $vsBackup)) {
-    Info "Install-Hodor.ps1 no modifico VS Code; no se toca"
+    Info "Install-Hodor.ps1 did not change VS Code; left untouched"
 } else {
     try {
         $before = Get-Content $vsBackup -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -140,23 +145,23 @@ if (-not (Test-Path $vsBackup)) {
             if ($now.PSObject.Properties['chat.useHooks']) {
                 $now.PSObject.Properties.Remove('chat.useHooks')
                 Save-Json $vsSettings $now
-                Ok "chat.useHooks desactivado (estaba apagado antes de instalar Hodor)"
+                Ok "chat.useHooks turned off (it was off before Hodor was installed)"
             }
         } else {
-            Info "chat.useHooks ya estaba activado antes de Hodor; se deja como estaba"
+            Info "chat.useHooks was already on before Hodor; left as is"
         }
         Remove-Item $vsBackup -Force -ErrorAction SilentlyContinue
     } catch {
-        Warn "No se pudo revisar VS Code: $($_.Exception.Message). Si quieres, desactiva 'chat.useHooks' a mano."
+        Warn "Could not check VS Code: $($_.Exception.Message). Turn 'chat.useHooks' off by hand if you want."
     }
 }
 
-# Resumen -------------------------------------------------------------------------------
+# Summary --------------------------------------------------------------------------
 Write-Host ""
 if ($script:problems -eq 0) {
-    Write-Host "== Hodor desinstalado ==" -ForegroundColor Green
+    Write-Host "== Hodor uninstalled ==" -ForegroundColor Green
 } else {
-    Write-Host "== Desinstalacion con $($script:problems) aviso(s): revisa los mensajes [!] de arriba ==" -ForegroundColor Yellow
+    Write-Host "== Uninstall finished with $($script:problems) warning(s): check the [!] messages above ==" -ForegroundColor Yellow
 }
-Write-Host "Reinicia Claude Code y recarga VS Code para que dejen de cargar los hooks."
+Write-Host "Restart Claude Code and reload VS Code so they stop loading the hooks."
 if ($script:problems -gt 0) { exit 1 }
