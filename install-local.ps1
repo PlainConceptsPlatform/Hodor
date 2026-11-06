@@ -152,7 +152,7 @@ Write-Host "   Check end to end: powershell -NoProfile -File $Dest\dispatch.ps1 
 Write-Host "3. Restart Claude Code / reload VS Code so the hooks load."
 Write-Host ""
 Write-Host "== Quick manual check (no IDE needed) =="
-Write-Host "  A critical secret must BLOCK the prompt (exit 2, decision:block):"
+Write-Host "  A critical secret must WARN (systemMessage, exit 0; it blocks only with policy.blockSeverity=critical):"
 Write-Host ('  ''{"prompt":"token ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcd"}'' | powershell -NoProfile -ExecutionPolicy Bypass -File "' + $Dest + '\dispatch.ps1" -Event UserPromptSubmit -Agent claude-code')
 Write-Host "  Re-check the version anytime with:"
 Write-Host ('  powershell -NoProfile -ExecutionPolicy Bypass -File "' + $Dest + '\dispatch.ps1" -Event version')
