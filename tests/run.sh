@@ -228,6 +228,66 @@ else
 fi
 
 echo ""
+echo "== Pilot installer / uninstaller (isolated HOME) =="
+# Full cycle of pilot/install-hodor.sh + pilot/uninstall-hodor.sh against a mock collector, using this checkout
+# as the repo (--no-update: never git pull it; --keep-repo: never delete it).
+if [ -z "$PY" ] || [ "$HAS_JQ" = 0 ] || ! command -v git >/dev/null 2>&1 || [ ! -d "$ROOT/.git" ]; then
+  printf '  SKIP  pilot installer (needs python3 + jq + a git checkout)\n'
+else
+  PH="$WORK/pilot-home"; PM="$WORK/pilot-mock"; mkdir -p "$PH/.claude" "$PH/.config/Code/User" "$PM"
+  PCLAUDE="$PH/.claude/settings.json"; PVS="$PH/.config/Code/User/settings.json"
+  PINST="$PH/.local/share/plainconcepts/ai-hooks"
+  printf '%s' '{"model":"x","hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"other-tool"}]}]}}' > "$PCLAUDE"
+  printf '%s' '{"editor.fontSize":14}' > "$PVS"
+  "$PY" "$HERE/mock-otlp.py" "$PM" >/dev/null 2>&1 &
+  PMOCK_PID=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$PM/port" ] && break; sleep 0.5; done
+  PEP="http://127.0.0.1:$(cat "$PM/port")"
+  in_pilot_home() { # in_pilot_home <cmd...> - run with the fake HOME and none of the suite's overrides
+    ( unset AIHOOKS_SETTINGS AIHOOKS_CLAUDE_HOME AIHOOKS_COPILOT_HOME AIHOOKS_ROOT CLAUDE_CONFIG_DIR XDG_CONFIG_HOME
+      export HOME="$PH"; "$@" )
+  }
+  hodor_hooks() { jq '[.hooks // {} | .[][] | .hooks[]? | .command | select(test("ai-hooks/dispatch\\.sh"))] | length' "$PCLAUDE"; }
+
+  in_pilot_home bash "$ROOT/pilot/install-hodor.sh" --token 'Bearer tok' --email tester@plainconcepts.com \
+    --endpoint "$PEP" --repo-dir "$ROOT" --no-update </dev/null > "$WORK/pilot-install.txt" 2>&1
+  rc=$?
+  [ "$rc" = 0 ] && ok 'pilot install: runs, selftest OK' || bad 'pilot install: runs' "exit $rc: $(tail -n 5 "$WORK/pilot-install.txt")"
+  cfg="$(jq -c '[.otel.endpoint, .otel.headers.Authorization, .identity.email]' "$PINST/config/settings.json" 2>/dev/null)"
+  [ "$cfg" = "[\"$PEP\",\"Bearer tok\",\"tester@plainconcepts.com\"]" ] \
+    && ok 'pilot install: endpoint, token ("Bearer" not doubled) and identity in config' || bad 'pilot install: config' "$cfg"
+  grep -q '"auth": *"Bearer tok"' "$PM/requests.jsonl" 2>/dev/null \
+    && ok 'pilot install: selftest reached the collector with the token' || bad 'pilot install: selftest auth' "$(head -c 300 "$PM/requests.jsonl" 2>/dev/null)"
+  n="$(hodor_hooks)"
+  if [ "$n" = 5 ] && grep -q 'other-tool' "$PCLAUDE"; then ok 'pilot install: claude hooks added (5), foreign hook kept'; else bad 'pilot install: claude hooks' "$n hooks: $(cat "$PCLAUDE")"; fi
+  grep -q "$PINST/dispatch.sh sessionStart copilot" "$PH/.copilot/hooks/company-hooks.json" 2>/dev/null \
+    && ok 'pilot install: copilot hook points to the install' || bad 'pilot install: copilot hook' "$(cat "$PH/.copilot/hooks/company-hooks.json" 2>/dev/null)"
+  [ "$(jq -c '[."chat.useHooks", ."editor.fontSize"]' "$PVS")" = '[true,14]' ] && [ -f "$PVS.hodor.bak" ] \
+    && ok 'pilot install: VS Code chat.useHooks enabled (backup kept)' || bad 'pilot install: VS Code' "$(cat "$PVS")"
+  # The generated Claude command must work as Claude Code runs it (sh -c)
+  hook_cmd="$(jq -r '.hooks.UserPromptSubmit[-1].hooks[0].command' "$PCLAUDE")"
+  out="$(printf '%s' '{"prompt":"token ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcd","session_id":"p1","cwd":"/tmp"}' | in_pilot_home sh -c "$hook_cmd" 2>&1)"
+  contains "$out" 'GITHUB_TOKEN' && ok 'pilot install: claude hook command runs (warns on a secret)' || bad 'pilot install: claude hook command' "$hook_cmd -> $out"
+
+  in_pilot_home bash "$ROOT/pilot/install-hodor.sh" --token tok --email tester@plainconcepts.com \
+    --endpoint "$PEP" --repo-dir "$ROOT" --no-update </dev/null > "$WORK/pilot-install2.txt" 2>&1
+  rc=$?; n="$(hodor_hooks)"
+  [ "$rc" = 0 ] && [ "$n" = 5 ] && ok 'pilot install: reinstall is idempotent (no duplicated hooks)' || bad 'pilot install: reinstall' "exit $rc, $n hooks"
+
+  in_pilot_home bash "$ROOT/pilot/uninstall-hodor.sh" --repo-dir "$ROOT" --keep-repo </dev/null > "$WORK/pilot-uninstall.txt" 2>&1
+  rc=$?
+  [ "$rc" = 0 ] && ok 'pilot uninstall: runs' || bad 'pilot uninstall: runs' "exit $rc: $(tail -n 5 "$WORK/pilot-uninstall.txt")"
+  [ "$(jq -c '[.model, [.hooks[][] | .hooks[].command]]' "$PCLAUDE")" = '["x",["other-tool"]]' ] \
+    && ok 'pilot uninstall: only Hodor hooks removed' || bad 'pilot uninstall: claude settings' "$(cat "$PCLAUDE")"
+  [ ! -e "$PINST" ] && [ ! -e "$PH/.copilot/hooks/company-hooks.json" ] && [ ! -e "$PH/.local/state/plainconcepts/ai-hooks" ] \
+    && ok 'pilot uninstall: install, logs and copilot hook removed' || bad 'pilot uninstall: files left' "$(ls -R "$PH/.local" 2>/dev/null | head -5)"
+  [ "$(jq -c '[has("chat.useHooks"), ."editor.fontSize"]' "$PVS")" = '[false,14]' ] \
+    && ok 'pilot uninstall: VS Code chat.useHooks reverted' || bad 'pilot uninstall: VS Code' "$(cat "$PVS")"
+  [ -f "$ROOT/dispatch.sh" ] && ok 'pilot uninstall: --keep-repo keeps the repo' || bad 'pilot uninstall: repo deleted!' "$ROOT"
+  kill "$PMOCK_PID" 2>/dev/null
+fi
+
+echo ""
 echo "== Unit checks =="
 export AIHOOKS_ROOT="$ROOT"
 SP="$ROOT/layers/policy/scan-prompt.sh"

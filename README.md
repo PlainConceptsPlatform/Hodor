@@ -122,6 +122,16 @@ Uninstall: `powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFIL
 
 `pilot/Uninstall-Hodor.ps1` reverts it: stops background workers, removes only Hodor's hooks from `~/.claude/settings.json` (other hooks and settings are kept; backup `.hodor-uninstall.bak`), deletes the Copilot hook file, the install folder and the repo copy (`-KeepRepo`, `-KeepLogs` zips the logs to the Desktop), and turns `chat.useHooks` back off if the installer enabled it.
 
+## Pilot installation (Linux / macOS, one script)
+
+Same flow with `pilot/install-hodor.sh` (bash 3.2+, no root; needs `git`, `curl`, `jq`). It clones into `~/Hodor`, installs into `~/.local/share/plainconcepts/ai-hooks` (logs in `~/.local/state/plainconcepts/ai-hooks`), takes the first `@plainconcepts.com` address from the Claude account or `git config user.email` (or asks), writes the Atlas endpoint + token (`config/settings.json`, mode 600), wires the Copilot hook (bash command of the adapter) and the Claude Code hooks (derived from `adapters/claude/hooks-fragment.json`, same events/matchers, calling `dispatch.sh`), enables `chat.useHooks` in VS Code and runs the selftest.
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/PlainConceptsPlatform/Hodor/main/pilot/install-hodor.sh)
+```
+
+Uninstall: `bash ~/Hodor/pilot/uninstall-hodor.sh` (`--keep-repo`, `--keep-logs` saves a `.tar.gz` of the logs in `~`). Only Hodor's hooks are removed; other hooks and settings are kept.
+
 ## Local installation (Windows)
 
 ```powershell
@@ -155,7 +165,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\run.ps1
 bash tests/run.sh
 ```
 
-Coverage: block-on-critical vs warn (and the `policy.blockSeverity` threshold), evidence redaction / no prompt leak, skill/agent classification by plugin namespace, payload normalization across the 3 agents, and the version command. CI runs both on every push/PR (`.github/workflows/tests.yml`). Add a regression test by dropping a new folder in `tests/cases/` (`cmd`, `payload.json`, `expect`, optional `settings.json`).
+Coverage: block-on-critical vs warn (and the `policy.blockSeverity` threshold), evidence redaction / no prompt leak, skill/agent classification by plugin namespace, payload normalization across the 3 agents, the version command, and the pilot installers end to end (`Install-Hodor.ps1` / `install-hodor.sh` + uninstall in an isolated profile against a mock collector; the bash side needs python3 + jq + a git checkout, else it is skipped). CI runs both on every push/PR (`.github/workflows/tests.yml`). Add a regression test by dropping a new folder in `tests/cases/` (`cmd`, `payload.json`, `expect`, optional `settings.json`).
 
 ## Quick manual check without an IDE
 

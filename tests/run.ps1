@@ -311,6 +311,56 @@ if ($LASTEXITCODE -eq 0) { Ok 'installer: copilot command exits 0 when the hook 
 $hc = (Read-Text $written['hodor config']) | ConvertFrom-Json
 if ($hc.otel.endpoint -eq 'http://localhost:4318' -and $hc.otel.headers.Authorization -eq 'Bearer tok' -and $hc.otel.background -eq $true) { Ok 'installer: -OtelEndpoint / -OtelToken applied, new defaults merged' } else { Bad 'installer: config params' ($hc.otel | ConvertTo-Json -Compress) }
 
+Write-Host "`n== Pilot installer / uninstaller (isolated USERPROFILE / LOCALAPPDATA / APPDATA) =="
+# Full cycle of pilot\Install-Hodor.ps1 + pilot\Uninstall-Hodor.ps1 against a mock collector, using this checkout
+# as the repo (-NoUpdate: never git pull it; -KeepRepo: never delete it).
+$pil = Join-Path $work 'pilot'
+$pProfile = Join-Path $pil 'profile'; $pLocal = Join-Path $pil 'local'; $pRoaming = Join-Path $pil 'roaming'
+$pClaude = Join-Path $pProfile '.claude\settings.json'; $pVs = Join-Path $pRoaming 'Code\User\settings.json'
+New-Item -ItemType Directory -Force -Path (Split-Path $pClaude), (Split-Path $pVs), $pLocal | Out-Null
+[System.IO.File]::WriteAllText($pClaude, '{"model":"x","hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"other-tool.exe"}]}]}}')
+[System.IO.File]::WriteAllText($pVs, '{"editor.fontSize":14}')
+$pMock = Start-MockOtlp -Dir (Join-Path $pil 'mock')
+$pInstall = Join-Path $pLocal 'PlainConcepts\ai-hooks'
+function Invoke-Pilot([string]$script, [string[]]$extra, [string]$tag) {
+    $saved = @($env:USERPROFILE, $env:LOCALAPPDATA, $env:APPDATA)
+    $env:USERPROFILE = $pProfile; $env:LOCALAPPDATA = $pLocal; $env:APPDATA = $pRoaming
+    try {
+        # Start-Process (Windows PowerShell) does not quote arguments: quote the ones with spaces ourselves
+        $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Root "pilot\$script")) +
+            @($extra | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } })
+        $p = Start-Process -FilePath $psExe -ArgumentList $argList -RedirectStandardInput $empty `
+            -RedirectStandardOutput (Join-Path $pil "$tag-out.txt") -RedirectStandardError (Join-Path $pil "$tag-err.txt") -PassThru -Wait -NoNewWindow
+        return $p.ExitCode
+    } finally { $env:USERPROFILE = $saved[0]; $env:LOCALAPPDATA = $saved[1]; $env:APPDATA = $saved[2] }
+}
+$installArgs = @('-Token', 'Bearer tok', '-Email', 'tester@plainconcepts.com', '-Endpoint', $pMock.endpoint, '-RepoDir', $Root, '-NoUpdate')
+$rc = Invoke-Pilot 'Install-Hodor.ps1' $installArgs 'pinst'
+if ($rc -eq 0) { Ok 'pilot install: runs, selftest OK' } else { Bad 'pilot install: runs' ("exit $rc`n" + (Read-Text (Join-Path $pil 'pinst-out.txt'))) }
+$pc = (Read-Text (Join-Path $pInstall 'config\settings.json')) | ConvertFrom-Json
+if ($pc.otel.endpoint -eq $pMock.endpoint -and $pc.otel.headers.Authorization -eq 'Bearer tok' -and $pc.identity.email -eq 'tester@plainconcepts.com') {
+    Ok 'pilot install: endpoint, token ("Bearer" not doubled) and identity in config' } else { Bad 'pilot install: config' ($pc | ConvertTo-Json -Compress -Depth 5) }
+$auths = @((Read-Text (Join-Path $pMock.dir 'requests.jsonl')) -split "`n" | Where-Object { $_ } | ForEach-Object { ($_ | ConvertFrom-Json).auth })
+if ($auths -contains 'Bearer tok') { Ok 'pilot install: selftest reached the collector with the token' } else { Bad 'pilot install: selftest auth' ($auths -join ', ') }
+function Get-ClaudeCommands { $s = (Read-Text $pClaude) | ConvertFrom-Json; return @($s.hooks.PSObject.Properties | ForEach-Object { $_.Value } | ForEach-Object { $_.hooks } | ForEach-Object { $_.command }) }
+$cmds = @(Get-ClaudeCommands)
+$ours = @($cmds | Where-Object { $_ -like "*$pInstall\dispatch.ps1*" })
+if (($cmds -contains 'other-tool.exe') -and $ours.Count -eq 5) { Ok 'pilot install: claude hooks added (5), foreign hook kept' } else { Bad 'pilot install: claude hooks' ($cmds -join ' | ') }
+$vs = (Read-Text $pVs) | ConvertFrom-Json
+if ($vs.'chat.useHooks' -eq $true -and $vs.'editor.fontSize' -eq 14 -and (Test-Path "$pVs.hodor.bak")) { Ok 'pilot install: VS Code chat.useHooks enabled (backup kept)' } else { Bad 'pilot install: VS Code' (Read-Text $pVs) }
+$rc = Invoke-Pilot 'Install-Hodor.ps1' $installArgs 'pinst2'
+$ours2 = @(Get-ClaudeCommands | Where-Object { $_ -like '*ai-hooks\dispatch.ps1*' })
+if ($rc -eq 0 -and $ours2.Count -eq 5) { Ok 'pilot install: reinstall is idempotent (no duplicated hooks)' } else { Bad 'pilot install: reinstall' "exit $rc, $($ours2.Count) hooks" }
+$rc = Invoke-Pilot 'Uninstall-Hodor.ps1' @('-RepoDir', $Root, '-KeepRepo') 'puninst'
+if ($rc -eq 0) { Ok 'pilot uninstall: runs' } else { Bad 'pilot uninstall: runs' ("exit $rc`n" + (Read-Text (Join-Path $pil 'puninst-out.txt'))) }
+$cmds = @(Get-ClaudeCommands)
+if ($cmds.Count -eq 1 -and $cmds[0] -eq 'other-tool.exe' -and ((Read-Text $pClaude) -match '"model"')) { Ok 'pilot uninstall: only Hodor hooks removed' } else { Bad 'pilot uninstall: claude settings' (Read-Text $pClaude) }
+if (-not (Test-Path $pInstall) -and -not (Test-Path (Join-Path $pProfile '.copilot\hooks\company-hooks.json'))) { Ok 'pilot uninstall: install folder and copilot hook removed' } else { Bad 'pilot uninstall: files left' $pInstall }
+$vs = (Read-Text $pVs) | ConvertFrom-Json
+if (-not $vs.PSObject.Properties['chat.useHooks'] -and $vs.'editor.fontSize' -eq 14) { Ok 'pilot uninstall: VS Code chat.useHooks reverted' } else { Bad 'pilot uninstall: VS Code' (Read-Text $pVs) }
+if (Test-Path (Join-Path $Root 'dispatch.ps1')) { Ok 'pilot uninstall: -KeepRepo keeps the repo' } else { Bad 'pilot uninstall: repo deleted!' $Root }
+Stop-MockOtlp $pMock
+
 Write-Host "`n== Unit checks =="
 # scan-prompt: rule + severity
 $f = & (Join-Path $Root 'layers\policy\scan-prompt.ps1') -Prompt 'key AKIA1234567890ABCDEF here' -Root $Root
