@@ -16,7 +16,9 @@
 param(
     [string]$Token,
     [string]$Email,
-    [string]$RepoDir = (Join-Path $env:USERPROFILE 'Hodor')
+    [string]$RepoDir = (Join-Path $env:USERPROFILE 'Hodor'),
+    [string]$Endpoint,   # override the Atlas endpoint (tests, other environments)
+    [switch]$NoUpdate    # do not git pull an existing clone (tests)
 )
 
 # --- Pilot configuration --------------------------------------------------------
@@ -25,6 +27,7 @@ $OtelEndpoint = 'https://atlas-api.plainconcepts.com/api/v1/ai-hooks'
 $DefaultToken = ''   # optional: fill in before handing out the script so it does not ask for the token
 $InstallDir   = Join-Path $env:LOCALAPPDATA 'PlainConcepts\ai-hooks'
 # -------------------------------------------------------------------------------
+if ($Endpoint) { $OtelEndpoint = $Endpoint }
 
 $ErrorActionPreference = 'Stop'
 function Step($n, $msg) { Write-Host ""; Write-Host "[$n/6] $msg" -ForegroundColor Cyan }
@@ -61,7 +64,9 @@ if ($selfRepo -and -not $PSBoundParameters.ContainsKey('RepoDir') -and (Test-Pat
     $RepoDir = $selfRepo
 }
 Step 2 "Getting Hodor into $RepoDir"
-if (Test-Path (Join-Path $RepoDir '.git')) {
+if ((Test-Path (Join-Path $RepoDir '.git')) -and $NoUpdate) {
+    Ok "Using $RepoDir as is (-NoUpdate)"
+} elseif (Test-Path (Join-Path $RepoDir '.git')) {
     & git -C $RepoDir pull --ff-only
     if ($LASTEXITCODE -ne 0) { Warn "Could not update $RepoDir (git pull); installing the local copy as is." }
     else { Ok "Repo updated" }

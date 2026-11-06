@@ -42,7 +42,7 @@ Step 1 "Stopping Hodor background processes"
 $procs = @()
 try {
     $procs = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" |
-        Where-Object { $_.CommandLine -and $_.CommandLine -match $HodorPattern -and $_.ProcessId -ne $PID })
+        Where-Object { $_.CommandLine -and $_.CommandLine -like "*$InstallDir*dispatch.ps1*" -and $_.ProcessId -ne $PID })   # only THIS install's workers
 } catch { }
 foreach ($p in $procs) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch { } }
 if ($procs.Count) { Ok "$($procs.Count) process(es) stopped" } else { Info "No processes running" }

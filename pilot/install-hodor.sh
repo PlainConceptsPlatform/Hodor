@@ -25,12 +25,14 @@ CORP_DOMAIN='plainconcepts.com'
 INSTALL_DIR="${HOME}/.local/share/plainconcepts/ai-hooks"
 # -------------------------------------------------------------------------------
 
-TOKEN=""; EMAIL=""; REPO_DIR=""
+TOKEN=""; EMAIL=""; REPO_DIR=""; NO_UPDATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --token)    TOKEN="$2"; shift 2 ;;
-    --email)    EMAIL="$2"; shift 2 ;;
-    --repo-dir) REPO_DIR="$2"; shift 2 ;;
+    --token)     TOKEN="$2"; shift 2 ;;
+    --email)     EMAIL="$2"; shift 2 ;;
+    --repo-dir)  REPO_DIR="$2"; shift 2 ;;
+    --endpoint)  OTEL_ENDPOINT="$2"; shift 2 ;;   # override the Atlas endpoint (tests, other environments)
+    --no-update) NO_UPDATE=1; shift ;;            # do not git pull an existing clone (tests)
     -h|--help)  sed -n '2,17p' "$0" 2>/dev/null; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
@@ -81,7 +83,9 @@ if [ -z "$REPO_DIR" ]; then
   fi
 fi
 step 2 "Getting Hodor into $REPO_DIR"
-if [ -d "$REPO_DIR/.git" ]; then
+if [ -d "$REPO_DIR/.git" ] && [ "$NO_UPDATE" = 1 ]; then
+  ok "Using $REPO_DIR as is (--no-update)"
+elif [ -d "$REPO_DIR/.git" ]; then
   if git -C "$REPO_DIR" pull --ff-only; then ok "Repo updated"
   else warn "Could not update $REPO_DIR (git pull); installing the local copy as is."; fi
 elif [ -e "$REPO_DIR" ]; then
