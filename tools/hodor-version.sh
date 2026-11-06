@@ -31,6 +31,8 @@ if [ ! -f "$claude" ]; then
 else
   # Extract the dispatch path our hook points to and validate it exists / matches this install.
   hookpath="$(grep -oE '\-File "[^"]*dispatch\.(ps1|sh)"' "$claude" 2>/dev/null | head -n1 | sed -E 's/.*-File "([^"]*)"/\1/')"
+  # bash hook (pilot/install-hodor.sh): "\"<install>/dispatch.sh\" <Event> claude-code"
+  [ -z "$hookpath" ] && hookpath="$(grep -oE '/[^"\\ ]*ai-hooks/dispatch\.sh' "$claude" 2>/dev/null | head -n1)"
   if [ -z "$hookpath" ]; then
     echo "  claude hook : no Hodor hook found  ($claude)"
   elif [ ! -e "$hookpath" ] && ! grep -q "$ROOT" <<<"$hookpath"; then
