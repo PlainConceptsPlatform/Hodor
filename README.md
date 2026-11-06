@@ -110,6 +110,18 @@ It prints the version, install/config/log paths, whether the Claude Code and Cop
 
 > **Future CI contract:** the packaging workflow must check out with full history (`fetch-depth: 0`, needed for `rev-list --count`), run `tools/stamp-build-info.ps1` before packaging the `.intunewin`, and publish to Intune via Microsoft Graph. `build-info.json` (or `HKLM\SOFTWARE\PlainConcepts\AIHooks\Version`) backs the Intune detection rule.
 
+## Pilot installation (Windows, one script)
+
+For pilot testers, a single command: `pilot/Install-Hodor.ps1` clones this repo into `%USERPROFILE%\Hodor` (or `git pull`s it; always a git clone, never a zip, since the version is stamped from git), resolves the corporate UPN (`System32\whoami.exe /upn`), runs `install-local.ps1` against the Atlas endpoint with the ingest token (asked interactively, or `-Token` / `$env:HODOR_TOKEN`), enables `chat.useHooks` in VS Code (backup `settings.json.hodor.bak`; skipped if the file has comments) and runs the selftest.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/PlainConceptsPlatform/Hodor/main/pilot/Install-Hodor.ps1)))"
+```
+
+Uninstall: `powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Hodor\pilot\Uninstall-Hodor.ps1"`.
+
+`pilot/Uninstall-Hodor.ps1` reverts it: stops background workers, removes only Hodor's hooks from `~/.claude/settings.json` (other hooks and settings are kept; backup `.hodor-uninstall.bak`), deletes the Copilot hook file, the install folder and the repo copy (`-KeepRepo`, `-KeepLogs` zips the logs to the Desktop), and turns `chat.useHooks` back off if the installer enabled it.
+
 ## Local installation (Windows)
 
 ```powershell

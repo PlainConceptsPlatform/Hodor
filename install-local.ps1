@@ -27,6 +27,12 @@ if (Test-Path $destSettings) { try { $previous = Get-Content $destSettings -Raw 
 
 # 1. Copy scripts to the machine-wide folder (exclude the repo's .git history)
 if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest -Force | Out-Null }
+# Reinstall: drop the previous code first so files removed from the repo (old layers, old test cases) do not linger.
+# Only on an existing Hodor install (dispatch.ps1 present); config\ (merged below) and logs\ are kept.
+if (Test-Path (Join-Path $Dest 'dispatch.ps1')) {
+    Get-ChildItem -Path $Dest -Force | Where-Object { $_.Name -notin @('config', 'logs') } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
 Get-ChildItem -Path $Src -Force | Where-Object { $_.Name -ne '.git' } |
     Copy-Item -Destination $Dest -Recurse -Force
 # Remove any stale .git left by older installs: version must come from build-info.json here, not a frozen repo.
@@ -152,7 +158,7 @@ Write-Host "   Check end to end: powershell -NoProfile -File $Dest\dispatch.ps1 
 Write-Host "3. Restart Claude Code / reload VS Code so the hooks load."
 Write-Host ""
 Write-Host "== Quick manual check (no IDE needed) =="
-Write-Host "  A critical secret must BLOCK the prompt (exit 2, decision:block):"
+Write-Host "  A critical secret must WARN (systemMessage, exit 0; it blocks only with policy.blockSeverity=critical):"
 Write-Host ('  ''{"prompt":"token ghp_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcd"}'' | powershell -NoProfile -ExecutionPolicy Bypass -File "' + $Dest + '\dispatch.ps1" -Event UserPromptSubmit -Agent claude-code')
 Write-Host "  Re-check the version anytime with:"
 Write-Host ('  powershell -NoProfile -ExecutionPolicy Bypass -File "' + $Dest + '\dispatch.ps1" -Event version')
