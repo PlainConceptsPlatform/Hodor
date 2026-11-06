@@ -43,7 +43,12 @@ Ok "Git found"
 
 if (-not $Token) { $Token = $DefaultToken }
 if (-not $Token -and $env:HODOR_TOKEN) { $Token = $env:HODOR_TOKEN }
-if (-not $Token) { $Token = Read-Host "  Paste the Atlas token (without 'Bearer')" }
+if (-not $Token) {
+    # Masked input: the token is not echoed on screen (screenshots, screen sharing)
+    $secure = Read-Host "  Paste the Atlas token" -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try { $Token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+}
 $Token = ($Token -replace '^\s*Bearer\s+', '').Trim()
 if (-not $Token) { Fail "No token provided." }
 Ok "Token received"
@@ -87,7 +92,9 @@ Ok "Identity: $Email"
 Step 4 "Installing hooks into $InstallDir"
 $installer = Join-Path $RepoDir 'install-local.ps1'
 if (-not (Test-Path $installer)) { Fail "$installer not found" }
+# -SkipTests: the regression suite checks the code (CI does that), not this machine; the doctor + selftest below do.
 & powershell -NoProfile -ExecutionPolicy Bypass -File $installer `
+    -SkipTests `
     -Dest $InstallDir `
     -OtelEndpoint $OtelEndpoint `
     -OtelToken $Token `

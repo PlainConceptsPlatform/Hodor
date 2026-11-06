@@ -27,6 +27,12 @@ if (Test-Path $destSettings) { try { $previous = Get-Content $destSettings -Raw 
 
 # 1. Copy scripts to the machine-wide folder (exclude the repo's .git history)
 if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest -Force | Out-Null }
+# Reinstall: drop the previous code first so files removed from the repo (old layers, old test cases) do not linger.
+# Only on an existing Hodor install (dispatch.ps1 present); config\ (merged below) and logs\ are kept.
+if (Test-Path (Join-Path $Dest 'dispatch.ps1')) {
+    Get-ChildItem -Path $Dest -Force | Where-Object { $_.Name -notin @('config', 'logs') } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
 Get-ChildItem -Path $Src -Force | Where-Object { $_.Name -ne '.git' } |
     Copy-Item -Destination $Dest -Recurse -Force
 # Remove any stale .git left by older installs: version must come from build-info.json here, not a frozen repo.
